@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vectros-sdk"
+version = "0.1.0"
+description = "AIOS-Agent SDK (Vectros) client library for interacting with AIOS kernel"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "AIOS Team" }
+]
+dependencies = [
+    "pydantic>=2.0",
+    "requests>=2.28.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0"
+]
+
+[project.scripts]
+list-toolhub-tools = "vectros_sdk.commands.list_toolhub:main"
+list-local-tools = "vectros_sdk.commands.list_local_tools:main"
+download-tool = "vectros_sdk.commands.download_tool:main"
+upload-tool = "vectros_sdk.commands.upload_tool:main"
+list-agenthub-agents = "vectros_sdk.commands.list_agenthub:main"
+list-local-agents = "vectros_sdk.commands.list_local_agents:main"
+download-agent = "vectros_sdk.commands.download_agent:main"
+upload-agents = "vectros_sdk.commands.upload_agent:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vectros_sdk*"]
