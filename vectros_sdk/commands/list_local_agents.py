@@ -1,3 +1,9 @@
+"""
+Command-line tool and API for listing locally installed and registered AIOS agents.
+
+Provides `list_local_agents` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import json
 import os
@@ -10,13 +16,20 @@ from vectros_sdk.agent.registry import list_registered_agents
 
 def list_local_agents(agents_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    List agents installed locally on the system and registered in the local agent registry.
+    List agents installed locally on the filesystem and registered in the in-memory registry.
 
     Args:
-        agents_dir: Optional root directory path to scan for agent config.json files.
+        agents_dir (Optional[str], optional): Custom root directory path to scan for agent config.json files.
+            If None, scans default core paths. Defaults to None.
 
     Returns:
-        List[Dict[str, Any]]: List of local agent info dictionaries.
+        List[Dict[str, Any]]: List of local agent info dictionaries containing name, author, version, and path/class.
+
+    Example:
+        >>> from vectros_sdk.commands.list_local_agents import list_local_agents
+        >>> local_agents = list_local_agents()
+        >>> for a in local_agents:
+        ...     print(a["name"], a["source"])
     """
     agents = []
     seen_names = set()
@@ -75,6 +88,15 @@ def list_local_agents(agents_dir: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `list-local-agents`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success).
+    """
     parser = argparse.ArgumentParser(description="List agents installed on local system.")
     parser.add_argument(
         "--agents_dir",

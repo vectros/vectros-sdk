@@ -1,21 +1,37 @@
+"""
+Command-line tool and API for listing tools on the AIOS Tool Hub.
+
+Provides `list_toolhub_tools` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import sys
 from typing import Any, Dict, List, Optional
 import requests
 
 DEFAULT_TOOLHUB_URL = "https://app.aios.foundation"
+"""str: Default Tool Hub endpoint URL."""
 
 
-def list_toolhub_tools(toolhub_url: str = DEFAULT_TOOLHUB_URL, timeout: int = 30) -> List[Dict[str, Any]]:
+def list_toolhub_tools(
+    toolhub_url: str = DEFAULT_TOOLHUB_URL,
+    timeout: int = 30,
+) -> List[Dict[str, Any]]:
     """
     Fetch and list all tools available on the AIOS Tool Hub.
 
     Args:
-        toolhub_url: URL endpoint of the Tool Hub.
-        timeout: Request timeout in seconds.
+        toolhub_url (str, optional): URL endpoint of the Tool Hub. Defaults to DEFAULT_TOOLHUB_URL.
+        timeout (int, optional): Request timeout in seconds. Defaults to 30.
 
     Returns:
-        List[Dict[str, Any]]: List of tool metadata dictionaries.
+        List[Dict[str, Any]]: List of tool metadata dictionaries containing name, author, version, and description.
+
+    Example:
+        >>> from vectros_sdk.commands.list_toolhub import list_toolhub_tools
+        >>> tools = list_toolhub_tools()
+        >>> for t in tools:
+        ...     print(t["name"])
     """
     url = toolhub_url.rstrip("/")
     endpoint = f"{url}/tools" if not url.endswith("/tools") else url
@@ -36,6 +52,15 @@ def list_toolhub_tools(toolhub_url: str = DEFAULT_TOOLHUB_URL, timeout: int = 30
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `list-toolhub-tools`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line argument list. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success).
+    """
     parser = argparse.ArgumentParser(description="List tools available on AIOS Tool Hub.")
     parser.add_argument(
         "--toolhub_url",

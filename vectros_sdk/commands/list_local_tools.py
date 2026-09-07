@@ -1,3 +1,9 @@
+"""
+Command-line tool and API for listing locally installed and registered AIOS tools.
+
+Provides `list_local_tools` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import json
 import os
@@ -10,13 +16,20 @@ from vectros_sdk.tool.core.registry import list_registered_tools
 
 def list_local_tools(tools_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    List tools installed locally on the system and registered in the local tool registry.
+    List tools installed locally on the filesystem and registered in the in-memory registry.
 
     Args:
-        tools_dir: Optional root directory path to scan for tool config.json files.
+        tools_dir (Optional[str], optional): Custom root directory path to scan for tool config.json files.
+            If None, scans default core paths. Defaults to None.
 
     Returns:
-        List[Dict[str, Any]]: List of local tool info dictionaries.
+        List[Dict[str, Any]]: List of local tool info dictionaries containing name, author, version, and path/class.
+
+    Example:
+        >>> from vectros_sdk.commands.list_local_tools import list_local_tools
+        >>> local_tools = list_local_tools()
+        >>> for t in local_tools:
+        ...     print(t["name"], t["source"])
     """
     tools = []
     seen_names = set()
@@ -75,6 +88,15 @@ def list_local_tools(tools_dir: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `list-local-tools`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success).
+    """
     parser = argparse.ArgumentParser(description="List tools installed on local system.")
     parser.add_argument(
         "--tools_dir",

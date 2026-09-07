@@ -1,3 +1,10 @@
+"""
+Post API (Agent-to-Agent Communication) functional interface for Vectros SDK.
+
+Provides functions for direct point-to-point agent messaging, mailbox polling,
+broadcasting announcements, and pub/sub topic messaging.
+"""
+
 from typing import Any, Dict, List, Optional, Union
 
 from vectros_sdk.client.config import aios_kernel_url
@@ -6,7 +13,15 @@ from vectros_sdk.post.models import PostQuery, PostResponse
 
 
 def _parse_post_response(raw_resp: Dict[str, Any]) -> PostResponse:
-    """Parse raw response dictionary from kernel into PostResponse object."""
+    """
+    Parse raw response dictionary from kernel into a typed PostResponse object.
+
+    Args:
+        raw_resp (Dict[str, Any]): Raw JSON response from AIOS kernel.
+
+    Returns:
+        PostResponse: Typed PostResponse instance with unwrapped fields.
+    """
     if isinstance(raw_resp, dict):
         if "response" in raw_resp and isinstance(raw_resp["response"], dict):
             inner = dict(raw_resp["response"])
@@ -29,17 +44,30 @@ def send_post(
     base_url: str = aios_kernel_url,
 ) -> PostResponse:
     """
-    Send a direct message from one agent to another.
+    Send a direct message from one agent to another agent's mailbox.
 
     Args:
-        sender: Sending agent identifier.
-        recipient: Target recipient agent identifier.
-        message: Content string or structured data payload.
-        metadata: Optional metadata (priority, headers, tags).
-        base_url: API endpoint URL.
+        sender (str): Sending agent identifier.
+        recipient (str): Target recipient agent identifier.
+        message (Union[str, Dict[str, Any]]): Text message content or structured payload.
+        metadata (Optional[Dict[str, Any]], optional): Optional metadata (headers, tags, priority). Defaults to None.
+        base_url (str, optional): API endpoint URL. Defaults to configured `aios_kernel_url`.
 
     Returns:
-        PostResponse: Response containing message_id and delivery status.
+        PostResponse: Response object containing `message_id` and delivery confirmation.
+
+    Raises:
+        AIOSKernelError: If kernel communication fails.
+
+    Example:
+        >>> from vectros_sdk.post.api import send_post
+        >>> resp = send_post(
+        ...     sender="alice",
+        ...     recipient="bob",
+        ...     message="Please analyze dataset #42",
+        ...     metadata={"priority": "high"}
+        ... )
+        >>> print(resp.message_id)
     """
     query = PostQuery(
         agent_name=sender,
@@ -59,16 +87,25 @@ def receive_posts(
     base_url: str = aios_kernel_url,
 ) -> PostResponse:
     """
-    Fetch pending messages from the agent's mailbox.
+    Fetch pending messages from an agent's inbox/mailbox.
 
     Args:
-        agent_name: Receiving agent identifier.
-        limit: Maximum number of messages to fetch (default: 10).
-        mark_as_read: Whether to acknowledge / mark fetched messages as read.
-        base_url: API endpoint URL.
+        agent_name (str): Receiving agent identifier.
+        limit (int, optional): Maximum number of messages to retrieve. Defaults to 10.
+        mark_as_read (bool, optional): Whether retrieved messages should be marked as read. Defaults to True.
+        base_url (str, optional): API endpoint URL. Defaults to configured `aios_kernel_url`.
 
     Returns:
-        PostResponse: Response containing the list of received messages.
+        PostResponse: Response object containing `messages` list with message IDs, senders, and content.
+
+    Raises:
+        AIOSKernelError: If kernel communication fails.
+
+    Example:
+        >>> from vectros_sdk.post.api import receive_posts
+        >>> resp = receive_posts(agent_name="bob", limit=5)
+        >>> for msg in resp.messages:
+        ...     print(msg["sender"], msg["content"])
     """
     query = PostQuery(
         agent_name=agent_name,
@@ -88,17 +125,25 @@ def broadcast_post(
     base_url: str = aios_kernel_url,
 ) -> PostResponse:
     """
-    Broadcast a message to all active agents or to an optional topic.
+    Broadcast a message to all active agents in the system or to an optional topic channel.
 
     Args:
-        sender: Sending agent identifier.
-        message: Content string or structured data payload.
-        topic: Optional topic filter for the broadcast.
-        metadata: Optional message metadata.
-        base_url: API endpoint URL.
+        sender (str): Sending agent identifier.
+        message (Union[str, Dict[str, Any]]): Broadcast text message or payload.
+        topic (Optional[str], optional): Target topic name for filtered broadcasts. Defaults to None.
+        metadata (Optional[Dict[str, Any]], optional): Metadata headers. Defaults to None.
+        base_url (str, optional): API endpoint URL. Defaults to configured `aios_kernel_url`.
 
     Returns:
-        PostResponse: Response containing broadcast status.
+        PostResponse: Response object containing broadcast delivery status.
+
+    Raises:
+        AIOSKernelError: If kernel communication fails.
+
+    Example:
+        >>> from vectros_sdk.post.api import broadcast_post
+        >>> resp = broadcast_post(sender="admin_bot", message="System reboot at 2:00 AM UTC")
+        >>> print(resp.response_message)
     """
     query = PostQuery(
         agent_name=sender,
@@ -119,17 +164,28 @@ def publish_to_topic(
     base_url: str = aios_kernel_url,
 ) -> PostResponse:
     """
-    Publish a message to a specific pub/sub channel/topic.
+    Publish a message to a specific pub/sub topic channel.
 
     Args:
-        sender: Publishing agent identifier.
-        topic: Channel topic name.
-        message: Content or payload.
-        metadata: Optional metadata.
-        base_url: API endpoint URL.
+        sender (str): Publishing agent identifier.
+        topic (str): Channel topic name to publish to.
+        message (Union[str, Dict[str, Any]]): Payload or message content.
+        metadata (Optional[Dict[str, Any]], optional): Additional metadata. Defaults to None.
+        base_url (str, optional): API endpoint URL. Defaults to configured `aios_kernel_url`.
 
     Returns:
-        PostResponse: Response containing publication status.
+        PostResponse: Response object containing publication confirmation.
+
+    Raises:
+        AIOSKernelError: If kernel communication fails.
+
+    Example:
+        >>> from vectros_sdk.post.api import publish_to_topic
+        >>> resp = publish_to_topic(
+        ...     sender="sensor_agent",
+        ...     topic="telemetry/temperature",
+        ...     message={"celsius": 23.4}
+        ... )
     """
     query = PostQuery(
         agent_name=sender,
@@ -148,15 +204,23 @@ def subscribe_topic(
     base_url: str = aios_kernel_url,
 ) -> PostResponse:
     """
-    Subscribe an agent to a pub/sub topic channel.
+    Subscribe an agent to a pub/sub topic channel to receive published messages.
 
     Args:
-        agent_name: Subscribing agent identifier.
-        topic: Topic channel name to subscribe to.
-        base_url: API endpoint URL.
+        agent_name (str): Subscribing agent identifier.
+        topic (str): Topic channel name to subscribe to.
+        base_url (str, optional): API endpoint URL. Defaults to configured `aios_kernel_url`.
 
     Returns:
-        PostResponse: Response containing subscription status.
+        PostResponse: Response object containing subscription status.
+
+    Raises:
+        AIOSKernelError: If kernel communication fails.
+
+    Example:
+        >>> from vectros_sdk.post.api import subscribe_topic
+        >>> resp = subscribe_topic(agent_name="alert_bot", topic="telemetry/temperature")
+        >>> print(resp.response_message)
     """
     query = PostQuery(
         agent_name=agent_name,
@@ -165,4 +229,3 @@ def subscribe_topic(
     )
     raw_response = send_request(query, base_url=base_url)
     return _parse_post_response(raw_response)
-

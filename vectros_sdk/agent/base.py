@@ -1,3 +1,11 @@
+"""
+Base Agent abstraction for Vectros SDK agent development.
+
+Defines the `BaseAgent` class providing standardized agent lifecycle management,
+abstract task execution, and convenience helpers for LLM chat, memory storage,
+and semantic memory recall.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
 
@@ -12,8 +20,22 @@ class BaseAgent(ABC):
     """
     Abstract base class for developing AIOS device-side agents.
 
-    Provides core lifecycle parameters and integrated helpers for interacting
-    with AIOS Kernel modules (LLM, Memory, Storage, Tools).
+    Provides core lifecycle attributes and integrated helpers for interacting
+    with AIOS Kernel modules (LLM, Memory, Storage, Tools, Post).
+
+    Attributes:
+        agent_name (str): Unique namespace identifier for this agent.
+        system_prompt (str): Default system prompt framing the agent's behavior.
+        tools (List[Dict[str, Any]]): List of tools available to this agent.
+        llm_config (Optional[List[Dict[str, Any]]]): LLM routing and backend configuration.
+        base_url (str): AIOS kernel endpoint URL.
+
+    Example:
+        >>> class MathBot(BaseAgent):
+        ...     def run(self, task):
+        ...         res = self.chat(f"Solve: {task}")
+        ...         self.remember(f"Solved: {task}")
+        ...         return res.response_message
     """
 
     def __init__(
@@ -24,6 +46,16 @@ class BaseAgent(ABC):
         llm_config: Optional[List[Dict[str, Any]]] = None,
         base_url: str = aios_kernel_url,
     ):
+        """
+        Initialize the agent with name, system prompt, tools, and kernel configuration.
+
+        Args:
+            agent_name (str): Identifier name for the agent.
+            system_prompt (Optional[str], optional): System prompt. If None, defaults to generic assistant prompt.
+            tools (Optional[List[Dict[str, Any]]], optional): Available tools list. Defaults to empty list.
+            llm_config (Optional[List[Dict[str, Any]]], optional): LLM configuration list for model routing. Defaults to None.
+            base_url (str, optional): AIOS kernel URL. Defaults to configured `aios_kernel_url`.
+        """
         self.agent_name = agent_name
         self.system_prompt = system_prompt or f"You are an AI assistant named {agent_name}."
         self.tools = tools or []
@@ -33,10 +65,10 @@ class BaseAgent(ABC):
     @abstractmethod
     def run(self, task: Union[str, Dict[str, Any]]) -> Any:
         """
-        Main execution loop / entry point for the agent.
+        Main execution loop and entry point for the agent.
 
         Args:
-            task: Task description string or structured task dict.
+            task (Union[str, Dict[str, Any]]): Task description string or structured task dictionary.
 
         Returns:
             Any: Result of the agent task execution.
@@ -49,14 +81,17 @@ class BaseAgent(ABC):
         llms: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
         """
-        Convenience helper to chat with the LLM using this agent's configuration.
+        Convenience helper to chat with the LLM using this agent's configuration and system prompt.
 
         Args:
-            prompt: User message prompt text.
-            llms: Optional LLM routing configuration override.
+            prompt (str): User message prompt text.
+            llms (Optional[List[Dict[str, Any]]], optional): Optional LLM routing configuration override.
 
         Returns:
-            LLMResponse: Response from the LLM.
+            LLMResponse: Response object from the LLM.
+
+        Raises:
+            AIOSKernelError: If kernel request fails.
         """
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -78,11 +113,14 @@ class BaseAgent(ABC):
         Convenience helper to persist a memory item in this agent's namespace.
 
         Args:
-            content: Text memory content.
-            metadata: Optional key-value metadata.
+            content (str): Text memory content to store.
+            metadata (Optional[Dict[str, Any]], optional): Structured metadata tags. Defaults to None.
 
         Returns:
-            MemoryResponse: Response containing memory_id.
+            MemoryResponse: Response containing assigned memory ID.
+
+        Raises:
+            AIOSKernelError: If kernel request fails.
         """
         return create_memory(
             agent_name=self.agent_name,
@@ -100,11 +138,14 @@ class BaseAgent(ABC):
         Convenience helper to search relevant memories from this agent's namespace.
 
         Args:
-            query: Semantic search query string.
-            k: Maximum number of ranked results.
+            query (str): Semantic search query string.
+            k (int, optional): Maximum number of ranked results to return. Defaults to 5.
 
         Returns:
-            MemoryResponse: Response containing ranked memory results.
+            MemoryResponse: Response containing ranked matching memories.
+
+        Raises:
+            AIOSKernelError: If kernel request fails.
         """
         return search_memories(
             agent_name=self.agent_name,
@@ -112,4 +153,3 @@ class BaseAgent(ABC):
             k=k,
             base_url=self.base_url,
         )
-

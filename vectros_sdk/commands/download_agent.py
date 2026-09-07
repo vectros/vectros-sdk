@@ -1,3 +1,9 @@
+"""
+Command-line tool and API for downloading agents from the AIOS Agent Hub.
+
+Provides `download_agent` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import json
 import os
@@ -7,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 DEFAULT_AGENTHUB_URL = "https://app.aios.foundation"
+"""str: Default Agent Hub endpoint URL."""
 
 
 def download_agent(
@@ -18,18 +25,23 @@ def download_agent(
     timeout: int = 30,
 ) -> Dict[str, Any]:
     """
-    Download an agent package from AIOS Agent Hub to local storage.
+    Download an agent package from the AIOS Agent Hub to local storage.
 
     Args:
-        agent_author: Author identifier for the agent.
-        agent_name: Name of the agent to download.
-        agent_version: Optional version string.
-        agenthub_url: Agent Hub endpoint URL.
-        target_dir: Destination directory path on local machine.
-        timeout: Request timeout in seconds.
+        agent_author (str): Author identifier for the agent.
+        agent_name (str): Name of the agent to download.
+        agent_version (Optional[str], optional): Agent version string. Defaults to None.
+        agenthub_url (str, optional): Agent Hub endpoint URL. Defaults to DEFAULT_AGENTHUB_URL.
+        target_dir (Optional[str], optional): Destination directory on local machine. Defaults to core agent path.
+        timeout (int, optional): Request timeout in seconds. Defaults to 30.
 
     Returns:
-        Dict[str, Any]: Operation status and target directory path.
+        Dict[str, Any]: Status dictionary containing success flag, agent name, author, and target path.
+
+    Example:
+        >>> from vectros_sdk.commands.download_agent import download_agent
+        >>> res = download_agent("demo_author", "demo_agent")
+        >>> print(res["success"], res.get("target_dir"))
     """
     base = agenthub_url.rstrip("/")
     params = {"author": agent_author, "name": agent_name}
@@ -107,6 +119,15 @@ def download_agent(
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `download-agent`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success, 1 for error).
+    """
     parser = argparse.ArgumentParser(description="Download an agent from the AIOS Agent Hub.")
     parser.add_argument("--agent_author", required=True, help="Author of the agent")
     parser.add_argument("--agent_name", required=True, help="Name of the agent")

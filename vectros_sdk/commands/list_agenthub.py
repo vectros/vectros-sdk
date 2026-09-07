@@ -1,21 +1,37 @@
+"""
+Command-line tool and API for listing agents on the AIOS Agent Hub.
+
+Provides `list_agenthub_agents` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import sys
 from typing import Any, Dict, List, Optional
 import requests
 
 DEFAULT_AGENTHUB_URL = "https://app.aios.foundation"
+"""str: Default Agent Hub endpoint URL."""
 
 
-def list_agenthub_agents(agenthub_url: str = DEFAULT_AGENTHUB_URL, timeout: int = 30) -> List[Dict[str, Any]]:
+def list_agenthub_agents(
+    agenthub_url: str = DEFAULT_AGENTHUB_URL,
+    timeout: int = 30,
+) -> List[Dict[str, Any]]:
     """
     Fetch and list all agents available on the AIOS Agent Hub.
 
     Args:
-        agenthub_url: URL endpoint of the Agent Hub.
-        timeout: Request timeout in seconds.
+        agenthub_url (str, optional): URL endpoint of the Agent Hub. Defaults to DEFAULT_AGENTHUB_URL.
+        timeout (int, optional): Request timeout in seconds. Defaults to 30.
 
     Returns:
-        List[Dict[str, Any]]: List of agent metadata dictionaries.
+        List[Dict[str, Any]]: List of agent metadata dictionaries containing name, author, version, and description.
+
+    Example:
+        >>> from vectros_sdk.commands.list_agenthub import list_agenthub_agents
+        >>> agents = list_agenthub_agents()
+        >>> for a in agents:
+        ...     print(a["name"])
     """
     url = agenthub_url.rstrip("/")
     endpoint = f"{url}/agents" if not url.endswith("/agents") else url
@@ -36,6 +52,15 @@ def list_agenthub_agents(agenthub_url: str = DEFAULT_AGENTHUB_URL, timeout: int 
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `list-agenthub-agents`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success).
+    """
     parser = argparse.ArgumentParser(description="List agents available on AIOS Agent Hub.")
     parser.add_argument(
         "--agenthub_url",

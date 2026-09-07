@@ -1,3 +1,9 @@
+"""
+Command-line tool and API for uploading custom agents to the AIOS Agent Hub.
+
+Provides `upload_agent` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import json
 import os
@@ -7,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 DEFAULT_AGENTHUB_URL = "https://app.aios.foundation"
+"""str: Default Agent Hub endpoint URL."""
 
 
 def upload_agent(
@@ -15,15 +22,23 @@ def upload_agent(
     timeout: int = 30,
 ) -> Dict[str, Any]:
     """
-    Publish a custom agent package to the AIOS Agent Hub.
+    Publish a custom agent directory to the AIOS Agent Hub.
+
+    Validates that `config.json` and the entry file specified in build configuration
+    exist, packages code and assets, and POSTs the agent payload to the Agent Hub.
 
     Args:
-        agent_path: Path to the agent directory containing config.json and entry file.
-        agenthub_url: Agent Hub endpoint URL.
-        timeout: Request timeout in seconds.
+        agent_path (str): Path to the agent directory containing config.json and entry.py.
+        agenthub_url (str, optional): Agent Hub endpoint URL. Defaults to DEFAULT_AGENTHUB_URL.
+        timeout (int, optional): Request timeout in seconds. Defaults to 30.
 
     Returns:
-        Dict[str, Any]: Upload status result from the Agent Hub.
+        Dict[str, Any]: Upload status dictionary containing success boolean and response details.
+
+    Example:
+        >>> from vectros_sdk.commands.upload_agent import upload_agent
+        >>> res = upload_agent("./my_agents/researcher")
+        >>> print(res["success"])
     """
     path = Path(agent_path)
     if not path.exists() or not path.is_dir():
@@ -100,6 +115,15 @@ def upload_agent(
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `upload-agents`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success, 1 for error).
+    """
     parser = argparse.ArgumentParser(description="Upload and share custom agent with AIOS Agent Hub.")
     parser.add_argument("--agent_path", required=True, help="Path to the agent directory")
     parser.add_argument("--agenthub_url", default=DEFAULT_AGENTHUB_URL, help=f"Agent Hub URL (default: {DEFAULT_AGENTHUB_URL})")

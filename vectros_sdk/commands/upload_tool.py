@@ -1,3 +1,9 @@
+"""
+Command-line tool and API for uploading custom tools to the AIOS Tool Hub.
+
+Provides `upload_tool` programmatic function and `main` CLI entry point.
+"""
+
 import argparse
 import json
 import os
@@ -7,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 DEFAULT_TOOLHUB_URL = "https://app.aios.foundation"
+"""str: Default Tool Hub endpoint URL."""
 
 
 def upload_tool(
@@ -15,15 +22,23 @@ def upload_tool(
     timeout: int = 30,
 ) -> Dict[str, Any]:
     """
-    Publish a custom tool to the AIOS Tool Hub.
+    Publish a custom tool directory to the AIOS Tool Hub.
+
+    Validates that `config.json` and the entry file specified in build configuration
+    exist, packages code and assets, and POSTs the tool payload to the Tool Hub.
 
     Args:
-        tool_path: Path to the tool directory containing config.json and entry file.
-        toolhub_url: Tool Hub endpoint URL.
-        timeout: Request timeout in seconds.
+        tool_path (str): Path to the tool directory containing config.json and entry.py.
+        toolhub_url (str, optional): Tool Hub endpoint URL. Defaults to DEFAULT_TOOLHUB_URL.
+        timeout (int, optional): Request timeout in seconds. Defaults to 30.
 
     Returns:
-        Dict[str, Any]: Upload status result from the Tool Hub.
+        Dict[str, Any]: Upload status dictionary containing success boolean and response details.
+
+    Example:
+        >>> from vectros_sdk.commands.upload_tool import upload_tool
+        >>> res = upload_tool("./my_tools/wikipedia")
+        >>> print(res["success"])
     """
     path = Path(tool_path)
     if not path.exists() or not path.is_dir():
@@ -100,6 +115,15 @@ def upload_tool(
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    """
+    CLI entry point for `upload-tool`.
+
+    Args:
+        args (Optional[List[str]], optional): Command-line arguments. Defaults to sys.argv[1:].
+
+    Returns:
+        int: Exit status code (0 for success, 1 for error).
+    """
     parser = argparse.ArgumentParser(description="Upload and share custom tool with AIOS Tool Hub.")
     parser.add_argument("--tool_path", required=True, help="Path to the tool directory")
     parser.add_argument("--toolhub_url", default=DEFAULT_TOOLHUB_URL, help=f"Tool Hub URL (default: {DEFAULT_TOOLHUB_URL})")

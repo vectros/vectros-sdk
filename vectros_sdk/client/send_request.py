@@ -1,3 +1,9 @@
+"""
+HTTP Request Dispatcher module for communicating with the AIOS Kernel.
+
+Provides central `send_request` dispatcher and custom `AIOSKernelError` exception.
+"""
+
 import json
 from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel
@@ -8,8 +14,28 @@ from vectros_sdk.core.models import Query
 
 
 class AIOSKernelError(Exception):
-    """Exception raised when kernel communication or execution fails."""
-    def __init__(self, message: str, status_code: Optional[int] = None, response_data: Optional[Any] = None):
+    """
+    Exception raised when communication with the AIOS kernel fails or kernel returns non-2xx status.
+
+    Attributes:
+        message (str): Explanatory error message.
+        status_code (Optional[int]): HTTP status code from kernel response if available.
+        response_data (Optional[Any]): Raw or parsed JSON error response body from kernel.
+
+    Example:
+        >>> try:
+        ...     raise AIOSKernelError("Server error", status_code=500)
+        ... except AIOSKernelError as exc:
+        ...     print(exc.status_code)
+        500
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: Optional[int] = None,
+        response_data: Optional[Any] = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.response_data = response_data
@@ -21,18 +47,32 @@ def send_request(
     timeout: int = 60,
 ) -> Dict[str, Any]:
     """
-    Central dispatcher function to communicate with AIOS kernel via HTTP requests.
+    Central dispatcher function to communicate with AIOS kernel via HTTP POST requests.
+
+    Serializes the given Query model or dictionary payload, ensures the endpoint URL
+    targets `/query`, sends the HTTP POST request, validates the response, and returns
+    the parsed JSON payload.
 
     Args:
-        query: Query object, Pydantic model, or dictionary payload.
-        base_url: AIOS kernel base endpoint URL. Defaults to configured aios_kernel_url.
-        timeout: Request timeout in seconds (default 60).
+        query (Union[Query, BaseModel, Dict[str, Any]]): Query object or dictionary payload
+            containing the operation parameters.
+        base_url (Optional[str], optional): AIOS kernel base endpoint URL. If None, defaults
+            to the configured `aios_kernel_url`. Defaults to None.
+        timeout (int, optional): Request timeout in seconds. Defaults to 60.
 
     Returns:
-        Dict[str, Any]: Parsed response dictionary from the kernel.
+        Dict[str, Any]: Parsed JSON response dictionary returned by the AIOS kernel.
 
     Raises:
-        AIOSKernelError: If request fails or kernel returns non-2xx status code.
+        ValueError: If query argument is not an instance of Query, BaseModel, or dict.
+        AIOSKernelError: If connection fails, request times out, or kernel returns non-2xx HTTP status.
+
+    Example:
+        >>> from vectros_sdk.core.models import Query
+        >>> from vectros_sdk.client.send_request import send_request
+        >>> q = Query(query_class="llm", agent_name="demo_bot")
+        >>> # Dispatches payload to kernel:
+        >>> # resp = send_request(q, base_url="http://localhost:8000")
     """
     url = (base_url or aios_kernel_url).rstrip("/")
     if not url.endswith("/query"):
