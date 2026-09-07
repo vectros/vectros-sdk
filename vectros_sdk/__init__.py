@@ -1,5 +1,12 @@
 """Vectros SDK: AIOS-Agent SDK"""
 
+from vectros_sdk.agent.base import BaseAgent
+from vectros_sdk.agent.registry import (
+    clear_agent_registry,
+    get_agent,
+    list_registered_agents,
+    register_agent,
+)
 from vectros_sdk.client.config import aios_kernel_url
 from vectros_sdk.client.send_request import AIOSKernelError, send_request
 from vectros_sdk.core.models import Query, Response
@@ -78,4 +85,9 @@ __all__ = [
     "get_tool",
     "list_registered_tools",
     "clear_registry",
+    "BaseAgent",
+    "register_agent",
+    "get_agent",
+    "list_registered_agents",
+    "clear_agent_registry",
 ]
