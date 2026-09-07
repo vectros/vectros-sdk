@@ -47,6 +47,7 @@ class ResearchAnalystAgent(BaseAgent):
             base_url=effective_base_url,
         )
         self.name = self.agent_name
+        self.description = "Analyzes complex data, searches semantic memory, executes tools, and creates structured research dossiers."
         self.client = client or AIOSClient(base_url=effective_base_url, agent_name=self.agent_name)
 
     def run(self, input_data: Any) -> Dict[str, Any]:

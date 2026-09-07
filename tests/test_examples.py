@@ -1,10 +1,10 @@
 """
 Test Suite for Example Agents, Custom Tools, and Multi-Agent Demonstration.
+Tests execute REAL HTTP network calls against a live local AIOS Kernel server.
 """
 
 import json
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
 import pytest
 
 from vectros_sdk.agent.registry import (
@@ -32,7 +32,8 @@ from vectros_sdk.examples.tools.custom_tools import (
 from vectros_sdk.examples.agents.research_agent import ResearchAnalystAgent
 from vectros_sdk.examples.agents.archivist_agent import DataArchivistAgent
 from vectros_sdk.examples.agents.coordinator_agent import TaskCoordinatorAgent
-from vectros_sdk.examples.demo_multi_agent import build_mock_client, run_demonstration
+from vectros_sdk.examples.server.mock_kernel_server import LiveAIOSKernelServer, start_kernel_server
+from vectros_sdk.examples.demo_multi_agent import run_demonstration
 
 
 class TestCustomTools:
@@ -128,17 +129,23 @@ class TestCustomTools:
 
 
 class TestExampleAgents:
-    """Test concrete example agent implementations."""
+    """Test concrete example agent implementations using REAL HTTP requests."""
 
     @pytest.fixture
-    def mock_client(self) -> AIOSClient:
-        return build_mock_client()
+    def live_server_url(self) -> str:
+        srv, url = start_kernel_server(host="127.0.0.1", port=0)
+        yield url
+        srv.stop()
 
-    def test_research_analyst_agent(self, mock_client: AIOSClient) -> None:
-        agent = ResearchAnalystAgent(name="test_analyst", client=mock_client)
+    @pytest.fixture
+    def live_client(self, live_server_url: str) -> AIOSClient:
+        return AIOSClient(base_url=live_server_url)
+
+    def test_research_analyst_agent(self, live_client: AIOSClient) -> None:
+        agent = ResearchAnalystAgent(name="test_analyst", client=live_client)
         assert agent.name == "test_analyst"
 
-        # Test conduct_research
+        # Test conduct_research over real HTTP
         res = agent.conduct_research(
             topic="Distributed Caching Performance",
             numbers=[100, 200, 300],
@@ -148,14 +155,14 @@ class TestExampleAgents:
         assert res["topic"] == "Distributed Caching Performance"
         assert "statistics" in res
         assert "synthesis" in res
-        assert res["saved_memory_id"] == "mem_agentic_987"
+        assert res["saved_memory_id"] is not None
 
         # Test agent.run() interface
         run_res = agent.run({"topic": "AIOS Kernel", "numbers": [10, 20]})
         assert run_res["agent"] == "test_analyst"
 
-    def test_data_archivist_agent(self, mock_client: AIOSClient) -> None:
-        agent = DataArchivistAgent(name="test_archivist", client=mock_client)
+    def test_data_archivist_agent(self, live_client: AIOSClient) -> None:
+        agent = DataArchivistAgent(name="test_archivist", client=live_client)
         assert agent.name == "test_archivist"
 
         log = agent.setup_project_storage(
@@ -179,8 +186,8 @@ class TestExampleAgents:
         run_res = agent.run({"action": "setup_project", "project_name": "workspace_test"})
         assert run_res["project"] == "workspace_test"
 
-    def test_task_coordinator_agent(self, mock_client: AIOSClient) -> None:
-        agent = TaskCoordinatorAgent(name="test_coordinator", client=mock_client)
+    def test_task_coordinator_agent(self, live_client: AIOSClient) -> None:
+        agent = TaskCoordinatorAgent(name="test_coordinator", client=live_client)
         assert agent.name == "test_coordinator"
 
         pipeline_log = agent.orchestrate_pipeline(
@@ -198,14 +205,16 @@ class TestExampleAgents:
 
 
 class TestFullDemonstrationRunner:
-    """Test running the full multi-agent showcase script."""
+    """Test running the full multi-agent showcase script with real HTTP calls."""
 
     def test_run_demonstration(self, capsys: pytest.CaptureFixture) -> None:
-        run_demonstration(use_mock=True)
+        run_demonstration(auto_start_server=True)
         captured = capsys.readouterr()
+        assert "STARTING REAL AIOS KERNEL HTTP SERVER ON LOCALHOST" in captured.out
         assert "INITIALIZING AIOS CLIENT & REGISTERING CUSTOM TOOLS" in captured.out
         assert "PHASE 1: RESEARCH ANALYST AGENT" in captured.out
         assert "PHASE 2: DATA ARCHIVIST AGENT" in captured.out
         assert "PHASE 3: TASK COORDINATOR AGENT" in captured.out
         assert "PHASE 4: UNIFIED AIOSCLIENT HIGH-LEVEL HELPERS" in captured.out
-        assert "ALL SDK FEATURES & MULTI-AGENT WORKFLOWS SUCCESSFULLY DEMONSTRATED!" in captured.out
+        assert "VERIFICATION OF REAL HTTP NETWORK TRANSACTIONS" in captured.out
+        assert "ALL SDK FEATURES & MULTI-AGENT WORKFLOWS SUCCESSFULLY DEMONSTRATED WITH REAL HTTP REQUESTS!" in captured.out

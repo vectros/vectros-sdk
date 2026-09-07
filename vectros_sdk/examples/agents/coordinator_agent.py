@@ -52,6 +52,7 @@ class TaskCoordinatorAgent(BaseAgent):
             base_url=effective_base_url,
         )
         self.name = self.agent_name
+        self.description = "Coordinates multi-agent task pipelines, dispatches sub-tasks, collects inbox messages, and broadcasts milestones."
         self.client = client or AIOSClient(base_url=effective_base_url, agent_name=self.agent_name)
         self.registry = registry or AGENT_REGISTRY
 

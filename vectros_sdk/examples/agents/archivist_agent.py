@@ -46,6 +46,7 @@ class DataArchivistAgent(BaseAgent):
             base_url=effective_base_url,
         )
         self.name = self.agent_name
+        self.description = "Manages persistent file hierarchies, versions, integrity rollbacks, and file sharing on AIOS storage."
         self.client = client or AIOSClient(base_url=effective_base_url, agent_name=self.agent_name)
 
     def run(self, input_data: Any) -> Dict[str, Any]:
