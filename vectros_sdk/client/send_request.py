@@ -44,7 +44,7 @@ class AIOSKernelError(Exception):
 def send_request(
     query: Union[Query, BaseModel, Dict[str, Any]],
     base_url: Optional[str] = None,
-    timeout: int = 60,
+    timeout: int = 300,
 ) -> Dict[str, Any]:
     """
     Central dispatcher function to communicate with AIOS kernel via HTTP POST requests.

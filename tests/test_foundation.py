@@ -140,7 +140,7 @@ class TestSendRequest(unittest.TestCase):
             "http://localhost:8000/query",
             json={"query_class": "llm", "agent_name": "test_bot"},
             headers={"Content-Type": "application/json"},
-            timeout=60
+            timeout=300
         )
 
     @patch("requests.post")
@@ -156,7 +156,7 @@ class TestSendRequest(unittest.TestCase):
             "http://localhost:8000/query",
             json={"query_class": "ping"},
             headers={"Content-Type": "application/json"},
-            timeout=60
+            timeout=300
         )
 
     def test_send_request_invalid_query_type(self):

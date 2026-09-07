@@ -8,7 +8,6 @@ returns real JSON HTTP responses to AIOS-Agent SDK client requests.
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-import socket
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -75,6 +74,11 @@ class AIOSKernelHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(response_bytes)
 
     def _process_kernel_query(self, query: Dict[str, Any]) -> Dict[str, Any]:
+        # This compatibility demo has no authenticated Operation Interface.
+        # It must not turn SDK HTTP payloads into daemon lifecycle transitions.
+        return self._do_process_kernel_query(query)
+
+    def _do_process_kernel_query(self, query: Dict[str, Any]) -> Dict[str, Any]:
         """
         Statefully process query payload across LLM, Memory, Storage, Tool, and Post.
         """
@@ -92,23 +96,29 @@ class AIOSKernelHTTPHandler(BaseHTTPRequestHandler):
 
         if q_class == "llm":
             messages = query.get("messages", [])
-            last_msg = messages[-1].get("content", "") if messages else ""
             fmt = query.get("message_return_type", "text")
 
+            import urllib.request
+
+            ollama_payload = {
+                "model": "codegemma:2b",
+                "messages": messages,
+                "stream": False
+            }
             if fmt == "json" or query.get("response_format"):
-                synth = {
-                    "summary": f"Synthesized analysis for {agent_name}: Kernel resource allocation optimal.",
-                    "confidence": 0.99,
-                    "key_findings": [
-                        "Real HTTP POST request received over TCP socket.",
-                        "Direct connection to AIOS Kernel endpoint verified.",
-                        "Multi-turn latency measured under 5ms on localhost loopback.",
-                    ],
-                    "recommendation": "Maintain streaming connection for high-throughput agents.",
-                }
-                msg_content = json.dumps(synth)
-            else:
-                msg_content = f"[AIOS LLM Engine] Processed prompt: '{str(last_msg)[:60]}...'. Status: Verified."
+                ollama_payload["format"] = "json"
+
+            try:
+                req = urllib.request.Request(
+                    "http://127.0.0.1:11434/api/chat",
+                    data=json.dumps(ollama_payload).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'}
+                )
+                with urllib.request.urlopen(req) as resp:
+                    resp_body = json.loads(resp.read().decode('utf-8'))
+                    msg_content = resp_body.get('message', {}).get('content', '')
+            except Exception as e:
+                msg_content = f"Error calling Ollama: {str(e)}"
 
             return {
                 "response": {
@@ -408,4 +418,3 @@ def start_kernel_server(host: str = "127.0.0.1", port: int = 8888) -> Tuple[Live
     srv = LiveAIOSKernelServer(host=host, port=port)
     base_url = srv.start()
     return srv, base_url
-
