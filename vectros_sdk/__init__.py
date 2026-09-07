@@ -7,6 +7,7 @@ from vectros_sdk.agent.registry import (
     list_registered_agents,
     register_agent,
 )
+from vectros_sdk.client.client import AIOSClient, CerebrumClient
 from vectros_sdk.client.config import aios_kernel_url
 from vectros_sdk.client.send_request import AIOSKernelError, send_request
 from vectros_sdk.core.models import Query, Response
@@ -27,6 +28,14 @@ from vectros_sdk.memory.api import (
     update_memory,
 )
 from vectros_sdk.memory.models import MemoryQuery, MemoryResponse
+from vectros_sdk.post.api import (
+    broadcast_post,
+    publish_to_topic,
+    receive_posts,
+    send_post,
+    subscribe_topic,
+)
+from vectros_sdk.post.models import PostQuery, PostResponse
 from vectros_sdk.storage.api import (
     create_dir,
     create_file,
@@ -90,4 +99,13 @@ __all__ = [
     "get_agent",
     "list_registered_agents",
     "clear_agent_registry",
+    "PostQuery",
+    "PostResponse",
+    "send_post",
+    "receive_posts",
+    "broadcast_post",
+    "publish_to_topic",
+    "subscribe_topic",
+    "AIOSClient",
+    "CerebrumClient",
 ]
