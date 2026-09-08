@@ -559,6 +559,9 @@ class AIOSClient:
         self.agent_name = agent_name
         self.default_llms = default_llms
 
+        from vectros_sdk.transport.kernel_client import KernelClient
+        self.kernel_client = KernelClient()
+
         # Subsystems
         self.llm = LLMClient(self)
         self.memory = MemoryClient(self)
@@ -566,6 +569,25 @@ class AIOSClient:
         self.tool = ToolClient(self)
         self.post = PostClient(self)
         self.agent = AgentClient(self)
+
+    def submit_operation(self, instance_id: str, run_id: str, operation_id: str, kind_int: int, payload: str = "{}") -> Dict[str, Any]:
+        return self.kernel_client.submit(
+            agent_id=self.agent_name or "default_agent",
+            instance_id=instance_id,
+            run_id=run_id,
+            operation_id=operation_id,
+            kind_int=kind_int,
+            payload=payload
+        )
+
+    def get_operation(self, operation_id: str) -> Dict[str, Any]:
+        return self.kernel_client.get(operation_id)
+
+    def cancel_operation(self, operation_id: str) -> Dict[str, Any]:
+        return self.kernel_client.cancel(operation_id)
+
+    def watch_operations(self, run_id: str, cursor: str = "") -> Any:
+        return self.kernel_client.watch(self.agent_name or "default_agent", run_id, cursor)
 
     def chat(
         self,

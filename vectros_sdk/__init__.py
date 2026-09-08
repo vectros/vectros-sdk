@@ -12,6 +12,8 @@ from vectros_sdk.client.config import aios_kernel_url
 from vectros_sdk.client.send_request import AIOSKernelError, send_request
 from vectros_sdk.core.models import Query, Response
 from vectros_sdk.operation import OperationClient, OperationEvent, OperationInterfaceError, OperationView
+from vectros_sdk.transport.kernel_client import KernelClient
+from vectros_sdk.domain import OperationKind
 from vectros_sdk.llm.api import (
     llm_call_tool,
     llm_chat,
@@ -67,6 +69,8 @@ __all__ = [
     "OperationEvent",
     "OperationInterfaceError",
     "OperationView",
+    "KernelClient",
+    "OperationKind",
     "LLMQuery",
     "LLMResponse",
     "llm_chat",
@@ -113,4 +117,5 @@ __all__ = [
     "subscribe_topic",
     "AIOSClient",
     "CerebrumClient",
+    "KernelClient",
 ]
