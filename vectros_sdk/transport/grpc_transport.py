@@ -1,50 +1,31 @@
 """
-JSON-over-TCP transport client for the AIOS kernel OperationInterface (port 50051).
-
-The aiosd daemon exposes a JSON-over-TCP server matching the proto field names.
-Each request is a single JSON line; the server responds with a JSON line per reply.
-Watch responses stream multiple JSON lines until the connection is closed.
+gRPC transport client for the AIOS kernel OperationInterface (port 50051).
 """
-import json
-import socket
-import threading
-from typing import Iterator, Optional, Dict, Any, List
+import grpc
+from typing import Iterator, Dict, Any, Optional
 
-DEFAULT_TCP_ADDR = "localhost"
-DEFAULT_TCP_PORT = 50051
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 
+from vectros_sdk.proto.aios.v1 import operation_pb2, operation_pb2_grpc
+
+DEFAULT_GRPC_ADDR = "localhost:50051"
 
 class GrpcTransport:
-    """JSON-over-TCP client matching the aiosd grpc_server.rs protocol."""
-
-    def __init__(self, address: str = f"{DEFAULT_TCP_ADDR}:{DEFAULT_TCP_PORT}", timeout: float = 10.0):
-        host, port_str = address.rsplit(":", 1)
-        self._host = host
-        self._port = int(port_str)
+    def __init__(self, address: str = DEFAULT_GRPC_ADDR, timeout: float = 10.0, token: str = "super-secret-token"):
+        self._address = address
         self._timeout = timeout
-        # Probe connection
-        self._probe()
+        self._token = token
+        # Real gRPC requires metadata for interceptors
+        self._metadata = (("authorization", f"Bearer {token}"),)
+        
+        # Connect to server
+        self._channel = grpc.insecure_channel(address)
+        self._stub = operation_pb2_grpc.OperationInterfaceStub(self._channel)
 
-    def _probe(self):
-        """Check the server is reachable by attempting a TCP connect."""
-        s = socket.create_connection((self._host, self._port), timeout=self._timeout)
-        s.close()
-
-    def _send(self, payload: dict) -> dict:
-        """Send one JSON line request and receive one JSON line response."""
-        s = socket.create_connection((self._host, self._port), timeout=self._timeout)
-        try:
-            s.sendall((json.dumps(payload) + "\n").encode())
-            buf = b""
-            while b"\n" not in buf:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                buf += chunk
-            line = buf.split(b"\n")[0].decode()
-            return json.loads(line)
-        finally:
-            s.close()
+        # Probe connection via describe capabilities
+        self.describe_capabilities()
 
     def submit(
         self,
@@ -53,72 +34,68 @@ class GrpcTransport:
         run_id: str,
         operation_id: str,
         kind_int: int,
-        payload: str = "{}",
-        **kwargs,
-    ) -> dict:
-        req = {
-            "submit": {
-                "agent_id": agent_id,
-                "agent_instance_id": instance_id,
-                "run_id": run_id,
-                "operation_id": operation_id,
-                "kind": kind_int,
-                "payload": payload,  # FIX #3: forward real prompt to daemon
-            }
+        payload: Optional[bytes] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        req = operation_pb2.OperationEnvelope(
+            agent_id=agent_id,
+            agent_instance_id=instance_id,
+            run_id=run_id,
+            operation_id=operation_id,
+            kind=kind_int,
+            idempotency_key=idempotency_key or "",
+            payload=payload or b"",
+        )
+        res = self._stub.Submit(req, timeout=self._timeout, metadata=self._metadata)
+        return {
+            "operation_id": res.operation_id,
+            "state": res.state,
+            "cursor": res.cursor,
+            "local_outcome": res.local_outcome,
+            "external_outcome": res.external_outcome,
         }
-        return self._send(req)
 
     def get(self, operation_id: str) -> Dict[str, Any]:
-        req = {"get": {"operation_id": operation_id}}
-        return self._send(req)
+        req = operation_pb2.OperationIdRequest(operation_id=operation_id)
+        res = self._stub.Get(req, timeout=self._timeout, metadata=self._metadata)
+        return {
+            "operation_id": res.operation_id,
+            "state": res.state,
+            "cursor": res.cursor,
+            "local_outcome": res.local_outcome,
+            "external_outcome": res.external_outcome,
+        }
 
     def cancel(self, operation_id: str) -> Dict[str, Any]:
-        req = {"cancel": {"operation_id": operation_id, "reason": None}}
-        return self._send(req)
-
-    def watch(self, agent_id: str, run_id: str, cursor: str = "0") -> Iterator[Dict[str, Any]]:
-        """Stream watch events from the server until connection closes."""
-        req = {"watch": {"agent_id": agent_id, "run_id": run_id, "cursor": cursor}}
-        s = socket.create_connection((self._host, self._port), timeout=60.0)
-        try:
-            s.sendall((json.dumps(req) + "\n").encode())
-            buf = b""
-            while True:
-                try:
-                    chunk = s.recv(4096)
-                except socket.timeout:
-                    break
-                if not chunk:
-                    break
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    if line.strip():
-                        try:
-                            event = json.loads(line.decode())
-                            # Normalise the state field as event_type for consumers
-                            event["event_type"] = event.get("state", "Unknown")
-                            yield event
-                        except json.JSONDecodeError:
-                            pass
-        finally:
-            s.close()
-
-    def describe_capabilities(self) -> Dict[str, Any]:
-        req = {"_describe": {}}
-        return self._send(req)
-
-    def get_artifact(self, artifact_id: str) -> bytes:
-        import base64
-        req = {
-            "get_artifact": {
-                "artifact_id": artifact_id,
-            }
+        req = operation_pb2.CancelRequest(operation_id=operation_id, reason="Requested via SDK")
+        res = self._stub.Cancel(req, timeout=self._timeout, metadata=self._metadata)
+        return {
+            "operation_id": res.operation_id,
+            "state": res.state,
+            "cursor": res.cursor,
+            "local_outcome": res.local_outcome,
+            "external_outcome": res.external_outcome,
         }
-        resp = self._send(req)
-        if "chunk" in resp:
-            return base64.b64decode(resp["chunk"])
-        return b""
+
+    def watch(self, agent_id: str, run_id: str, cursor: str = "") -> Iterator[Dict[str, Any]]:
+        req = operation_pb2.WatchRequest(
+            agent_id=agent_id,
+            run_id=run_id,
+            cursor=cursor
+        )
+        for res in self._stub.Watch(req, metadata=self._metadata):
+            yield {
+                "operation_id": res.operation_id,
+                "state": res.state,
+                "cursor": res.cursor,
+                "local_outcome": res.local_outcome,
+                "external_outcome": res.external_outcome,
+            }
+
+    def describe_capabilities(self) -> list:
+        req = operation_pb2.Empty()
+        res = self._stub.DescribeCapabilities(req, timeout=self._timeout, metadata=self._metadata)
+        return list(res.capabilities)
 
     def close(self):
-        pass  # Connections are per-request; nothing to close
+        self._channel.close()
