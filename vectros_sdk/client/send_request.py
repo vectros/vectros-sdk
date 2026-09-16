@@ -45,20 +45,32 @@ def send_request(
     query: Union[Query, BaseModel, Dict[str, Any]],
     base_url: Optional[str] = None,
     timeout: int = 300,
+    socket_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Central dispatcher function to communicate with AIOS kernel via HTTP POST requests.
+    Central dispatcher function to communicate with the AIOS kernel.
 
-    Serializes the given Query model or dictionary payload, ensures the endpoint URL
-    targets `/query`, sends the HTTP POST request, validates the response, and returns
-    the parsed JSON payload.
+    When `socket_path` is given, the request is routed to a real, standing
+    kernel server (`aiosctl serve-kernel`) over its Unix socket via
+    `vectros_sdk.client.real_kernel.execute_real`, instead of the HTTP mock
+    path below (nothing in this workspace serves `{base_url}/query` — see
+    docs/architecture.md SDK.2). Not every query has a real equivalent;
+    `real_kernel.RealBackendUnsupported` is raised, not swallowed, for ones
+    that don't (see that module's docstring for the exact list).
+
+    Otherwise, serializes the given Query model or dictionary payload,
+    ensures the endpoint URL targets `/query`, sends the HTTP POST request,
+    validates the response, and returns the parsed JSON payload.
 
     Args:
         query (Union[Query, BaseModel, Dict[str, Any]]): Query object or dictionary payload
             containing the operation parameters.
         base_url (Optional[str], optional): AIOS kernel base endpoint URL. If None, defaults
-            to the configured `aios_kernel_url`. Defaults to None.
+            to the configured `aios_kernel_url`. Defaults to None. Ignored when `socket_path`
+            is given.
         timeout (int, optional): Request timeout in seconds. Defaults to 60.
+        socket_path (Optional[str], optional): Path to a real kernel server's Unix socket.
+            When given, bypasses HTTP entirely. Defaults to None.
 
     Returns:
         Dict[str, Any]: Parsed JSON response dictionary returned by the AIOS kernel.
@@ -66,6 +78,8 @@ def send_request(
     Raises:
         ValueError: If query argument is not an instance of Query, BaseModel, or dict.
         AIOSKernelError: If connection fails, request times out, or kernel returns non-2xx HTTP status.
+        real_kernel.RealBackendUnsupported: If `socket_path` is given and the query has no
+            real-kernel equivalent.
 
     Example:
         >>> from vectros_sdk.core.models import Query
@@ -74,6 +88,13 @@ def send_request(
         >>> # Dispatches payload to kernel:
         >>> # resp = send_request(q, base_url="http://localhost:8000")
     """
+    if socket_path is not None:
+        if not isinstance(query, Query):
+            raise ValueError("socket_path routing requires a Query instance, not a raw dict")
+        from vectros_sdk.client.real_kernel import execute_real
+
+        return execute_real(query, socket_path, timeout=float(timeout))
+
     url = (base_url or aios_kernel_url).rstrip("/")
     if not url.endswith("/query"):
         endpoint = f"{url}/query"

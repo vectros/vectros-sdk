@@ -87,6 +87,7 @@ class LLMClient:
             messages=messages,
             base_url=self._c.base_url,
             llms=llms or self._c.default_llms,
+            socket_path=self._c.socket_path,
         )
 
     def chat_json(
@@ -112,6 +113,7 @@ class LLMClient:
             base_url=self._c.base_url,
             llms=llms or self._c.default_llms,
             response_format=response_format,
+            socket_path=self._c.socket_path,
         )
 
     def chat_tool(
@@ -137,6 +139,7 @@ class LLMClient:
             tools=tools,
             base_url=self._c.base_url,
             llms=llms or self._c.default_llms,
+            socket_path=self._c.socket_path,
         )
 
     def call_tool(
@@ -162,6 +165,7 @@ class LLMClient:
             tools=tools,
             base_url=self._c.base_url,
             llms=llms or self._c.default_llms,
+            socket_path=self._c.socket_path,
         )
 
     def operate_file(
@@ -187,6 +191,7 @@ class LLMClient:
             tools=tools,
             base_url=self._c.base_url,
             llms=llms or self._c.default_llms,
+            socket_path=self._c.socket_path,
         )
 
 
@@ -218,6 +223,7 @@ class MemoryClient:
             content=content,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def get(self, memory_id: str) -> MemoryResponse:
@@ -234,6 +240,7 @@ class MemoryClient:
             agent_name=self._c.agent_name or "default_agent",
             memory_id=memory_id,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def update(
@@ -259,6 +266,7 @@ class MemoryClient:
             content=content,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def delete(self, memory_id: str) -> MemoryResponse:
@@ -275,6 +283,7 @@ class MemoryClient:
             agent_name=self._c.agent_name or "default_agent",
             memory_id=memory_id,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def search(self, query: str, k: int = 5) -> MemoryResponse:
@@ -293,6 +302,7 @@ class MemoryClient:
             query=query,
             k=k,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def create_agentic(
@@ -315,6 +325,7 @@ class MemoryClient:
             content=content,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
 
@@ -332,6 +343,7 @@ class StorageClient:
             agent_name=self._c.agent_name or "default_agent",
             root_dir=root_dir,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def create_file(self, file_path: str) -> StorageResponse:
@@ -340,6 +352,7 @@ class StorageClient:
             agent_name=self._c.agent_name or "default_agent",
             file_path=file_path,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def create_dir(self, dir_path: str) -> StorageResponse:
@@ -348,6 +361,7 @@ class StorageClient:
             agent_name=self._c.agent_name or "default_agent",
             dir_path=dir_path,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def write_file(self, file_path: str, content: str) -> StorageResponse:
@@ -357,6 +371,7 @@ class StorageClient:
             file_path=file_path,
             content=content,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def retrieve_file(
@@ -372,6 +387,7 @@ class StorageClient:
             n=n,
             keywords=keywords,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def rollback_file(self, file_path: str, n: int) -> StorageResponse:
@@ -381,6 +397,7 @@ class StorageClient:
             file_path=file_path,
             n=n,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def share_file(self, file_path: str) -> StorageResponse:
@@ -389,6 +406,7 @@ class StorageClient:
             agent_name=self._c.agent_name or "default_agent",
             file_path=file_path,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
 
@@ -406,6 +424,7 @@ class ToolClient:
             agent_name=self._c.agent_name or "default_agent",
             tool_calls=tool_calls,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def register(self, name: str, tool_class: Type[Any]) -> None:
@@ -546,6 +565,7 @@ class AIOSClient:
         base_url: Optional[str] = None,
         agent_name: Optional[str] = None,
         default_llms: Optional[List[Dict[str, Any]]] = None,
+        socket_path: Optional[str] = None,
     ):
         """
         Initialize the AIOS unified client.
@@ -554,10 +574,17 @@ class AIOSClient:
             base_url (Optional[str], optional): Kernel URL. Defaults to `aios_kernel_url`.
             agent_name (Optional[str], optional): Default agent namespace for requests.
             default_llms (Optional[List[Dict[str, Any]]], optional): Default LLM configuration list.
+            socket_path (Optional[str], optional): Path to a real, standing kernel server's
+                Unix socket (``aiosctl serve-kernel``). When given, every subsystem call this
+                client makes bypasses the HTTP mock path entirely and speaks the real
+                execution protocol — see `vectros_sdk.client.real_kernel` for exactly which
+                operations have a real equivalent and which raise `RealBackendUnsupported`.
+                Defaults to None (HTTP mock path, unchanged).
         """
         self.base_url = base_url or aios_kernel_url
         self.agent_name = agent_name
         self.default_llms = default_llms
+        self.socket_path = socket_path
 
         from vectros_sdk.transport.kernel_client import KernelClient
         self.kernel_client = KernelClient()

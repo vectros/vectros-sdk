@@ -39,6 +39,7 @@ def call_tool(
     agent_name: str,
     tool_calls: List[Dict[str, Any]],
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> ToolResponse:
     """
     Dispatch explicit tool executions to the AIOS kernel for processing.
@@ -70,5 +71,5 @@ def call_tool(
         agent_name=agent_name,
         tool_calls=tool_calls,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_tool_response(raw_response)

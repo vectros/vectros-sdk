@@ -41,6 +41,7 @@ def create_memory(
     content: str,
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Store new memory content with optional structured metadata in an agent's namespace.
@@ -72,7 +73,7 @@ def create_memory(
         content=content,
         metadata=metadata or {},
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)
 
 
@@ -80,6 +81,7 @@ def get_memory(
     agent_name: str,
     memory_id: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Fetch memory content and metadata by its unique memory ID.
@@ -105,7 +107,7 @@ def get_memory(
         action_type="get",
         memory_id=memory_id,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)
 
 
@@ -115,6 +117,7 @@ def update_memory(
     content: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Modify an existing memory's text content and/or metadata attributes.
@@ -147,7 +150,7 @@ def update_memory(
         content=content,
         metadata=metadata,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)
 
 
@@ -155,6 +158,7 @@ def delete_memory(
     agent_name: str,
     memory_id: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Remove a memory item permanently by ID from the agent's namespace.
@@ -180,7 +184,7 @@ def delete_memory(
         action_type="delete",
         memory_id=memory_id,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)
 
 
@@ -189,6 +193,7 @@ def search_memories(
     query: str,
     k: int = 5,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Perform natural language semantic similarity search across an agent's stored memories.
@@ -217,7 +222,7 @@ def search_memories(
         query=query,
         k=k,
     )
-    raw_response = send_request(query_obj, base_url=base_url)
+    raw_response = send_request(query_obj, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)
 
 
@@ -226,6 +231,7 @@ def create_agentic_memory(
     content: str,
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> MemoryResponse:
     """
     Store memory with autonomous cognitive organization capabilities (A-mem).
@@ -258,5 +264,5 @@ def create_agentic_memory(
         content=content,
         metadata=metadata or {},
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_memory_response(raw_response)

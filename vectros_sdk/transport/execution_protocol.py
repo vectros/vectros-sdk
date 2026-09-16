@@ -158,6 +158,60 @@ def memory_put(
     }
 
 
+def memory_delete(key: str, expected_revision: int = 0) -> Dict[str, Any]:
+    return {
+        "Data": {"MemoryDelete": {"key": key, "expected_revision": expected_revision}}
+    }
+
+
+def storage_get(collection: str, obj: str) -> Dict[str, Any]:
+    return {"Data": {"StorageGet": {"collection": collection, "object": obj}}}
+
+
+def storage_put(
+    collection: str, obj: str, content: bytes, expected_version: int = 0
+) -> Dict[str, Any]:
+    return {
+        "Data": {
+            "StoragePut": {
+                "collection": collection,
+                "object": obj,
+                "expected_version": expected_version,
+                # aios_core::support::schema serializes Vec<u8> as a plain
+                # JSON array of byte integers, not base64 — verified against
+                # the Rust side's own serde output.
+                "content": list(content),
+            }
+        }
+    }
+
+
+def storage_delete(collection: str, obj: str, expected_version: int = 0) -> Dict[str, Any]:
+    return {
+        "Data": {
+            "StorageDelete": {
+                "collection": collection,
+                "object": obj,
+                "expected_version": expected_version,
+            }
+        }
+    }
+
+
+def tool_invoke(tool: str, arguments: Dict[str, str]) -> Dict[str, Any]:
+    """``arguments`` values are always strings — the one registered fixture
+    tool (`DeterministicTextTransformV1`) only accepts a string `input`
+    field. `ToolValues` serializes as a list of `[name, {"String": value}]`
+    pairs, not a plain dict — verified against the Rust side's own output.
+    """
+    return {
+        "ToolInvoke": {
+            "tool": tool,
+            "arguments": [[key, {"String": value}] for key, value in arguments.items()],
+        }
+    }
+
+
 def context_create(context: str) -> Dict[str, Any]:
     return {"ContextCreate": {"context": context}}
 

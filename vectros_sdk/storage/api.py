@@ -40,6 +40,7 @@ def mount(
     agent_name: str,
     root_dir: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Mount a directory as the root storage location for an agent.
@@ -65,7 +66,7 @@ def mount(
         operation_type="mount",
         params=[{"root_dir": root_dir}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -73,6 +74,7 @@ def create_file(
     agent_name: str,
     file_path: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Create a new empty file at the specified relative path.
@@ -98,7 +100,7 @@ def create_file(
         operation_type="create_file",
         params=[{"file_path": file_path}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -106,6 +108,7 @@ def create_dir(
     agent_name: str,
     dir_path: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Create a new directory structure at the specified relative path.
@@ -131,7 +134,7 @@ def create_dir(
         operation_type="create_dir",
         params=[{"dir_path": dir_path}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -140,6 +143,7 @@ def write_file(
     file_path: str,
     content: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Write text content to a file, creating parent directories and the file if they do not exist.
@@ -166,7 +170,7 @@ def write_file(
         operation_type="write_file",
         params=[{"file_path": file_path, "content": content}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -176,6 +180,7 @@ def retrieve_file(
     n: int,
     keywords: Optional[List[str]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Search and retrieve files matching natural language query criteria and keywords.
@@ -207,7 +212,7 @@ def retrieve_file(
         operation_type="retrieve_file",
         params=[param_dict],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -216,6 +221,7 @@ def rollback_file(
     file_path: str,
     n: int,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Revert a file to an earlier version in its version history.
@@ -242,7 +248,7 @@ def rollback_file(
         operation_type="rollback_file",
         params=[{"file_path": file_path, "n": n}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)
 
 
@@ -250,6 +256,7 @@ def share_file(
     agent_name: str,
     file_path: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> StorageResponse:
     """
     Share a file across the AIOS kernel environment to make it accessible to other agents.
@@ -275,5 +282,5 @@ def share_file(
         operation_type="share_file",
         params=[{"file_path": file_path}],
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_storage_response(raw_response)

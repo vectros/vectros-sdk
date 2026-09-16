@@ -39,6 +39,7 @@ def llm_chat(
     messages: List[Dict[str, Any]],
     base_url: str = aios_kernel_url,
     llms: Optional[List[Dict[str, Any]]] = None,
+    socket_path: Optional[str] = None,
 ) -> LLMResponse:
     """
     Perform a basic text-based conversation with the language model.
@@ -73,7 +74,7 @@ def llm_chat(
         message_return_type="text",
         llms=llms,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_llm_response(raw_response)
 
 
@@ -83,6 +84,7 @@ def llm_chat_with_json_output(
     base_url: str = aios_kernel_url,
     llms: Optional[List[Dict[str, Any]]] = None,
     response_format: Optional[Dict[str, Any]] = None,
+    socket_path: Optional[str] = None,
 ) -> LLMResponse:
     """
     Get structured JSON responses from the language model adhering to a specified schema.
@@ -116,7 +118,7 @@ def llm_chat_with_json_output(
         response_format=response_format,
         llms=llms,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_llm_response(raw_response)
 
 
@@ -126,6 +128,7 @@ def llm_chat_with_tool_call_output(
     tools: List[Dict[str, Any]],
     base_url: str = aios_kernel_url,
     llms: Optional[List[Dict[str, Any]]] = None,
+    socket_path: Optional[str] = None,
 ) -> LLMResponse:
     """
     Chat with tool integration, allowing the model to decide which tools to call dynamically.
@@ -160,7 +163,7 @@ def llm_chat_with_tool_call_output(
         tool_choice="auto",
         llms=llms,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_llm_response(raw_response)
 
 
@@ -170,6 +173,7 @@ def llm_call_tool(
     tools: List[Dict[str, Any]],
     base_url: str = aios_kernel_url,
     llms: Optional[List[Dict[str, Any]]] = None,
+    socket_path: Optional[str] = None,
 ) -> LLMResponse:
     """
     Direct tool invocation instructing the language model to execute specified tools with input.
@@ -204,7 +208,7 @@ def llm_call_tool(
         tool_choice="required",
         llms=llms,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_llm_response(raw_response)
 
 
@@ -214,6 +218,7 @@ def llm_operate_file(
     tools: Optional[List[Dict[str, Any]]] = None,
     base_url: str = aios_kernel_url,
     llms: Optional[List[Dict[str, Any]]] = None,
+    socket_path: Optional[str] = None,
 ) -> LLMResponse:
     """
     Instruct the language model to perform file operations based on conversation instructions.
@@ -246,5 +251,5 @@ def llm_operate_file(
         message_return_type="text",
         llms=llms,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_llm_response(raw_response)

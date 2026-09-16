@@ -176,7 +176,7 @@ class TestConcurrentHammeringAndThreadSafety(unittest.TestCase):
     @patch("vectros_sdk.llm.api.send_request")
     def test_concurrent_api_hammering_with_mock(self, mock_send_request):
         """100 threads concurrently making LLM API calls with random latency and payloads."""
-        mock_send_request.side_effect = lambda query, base_url=None: {
+        mock_send_request.side_effect = lambda query, base_url=None, **_kwargs: {
             "response": {
                 "response_class": "llm",
                 "response_message": f"Worker response for {query.agent_name}",

@@ -70,7 +70,7 @@ class TestBrutalStorageSuite(unittest.TestCase):
     @patch("vectros_sdk.storage.api.send_request")
     def test_concurrent_storage_operations(self, mock_send_request):
         """Execute 100 concurrent storage operations across worker threads."""
-        def mock_dispatcher(query, base_url=None, timeout=60):
+        def mock_dispatcher(query, base_url=None, timeout=60, **_kwargs):
             return {
                 "response": {
                     "response_class": "storage",

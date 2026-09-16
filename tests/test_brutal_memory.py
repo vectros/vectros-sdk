@@ -64,7 +64,7 @@ class TestBrutalMemorySuite(unittest.TestCase):
     @patch("vectros_sdk.memory.api.send_request")
     def test_concurrent_memory_hammering(self, mock_send_request):
         """100 threads concurrently executing create, get, update, search, delete."""
-        mock_send_request.side_effect = lambda query, base_url=None: {
+        mock_send_request.side_effect = lambda query, base_url=None, **_kwargs: {
             "response": {
                 "success": True,
                 "memory_id": f"mem_{query.agent_name}_{query.action_type}",

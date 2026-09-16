@@ -75,7 +75,7 @@ class TestBrutalToolSuite(unittest.TestCase):
     @patch("vectros_sdk.tool.api.send_request")
     def test_concurrent_tool_execution(self, mock_send_request):
         """Execute 100 concurrent tool requests across worker threads."""
-        def mock_dispatcher(query, base_url=None, timeout=60):
+        def mock_dispatcher(query, base_url=None, timeout=60, **_kwargs):
             return {
                 "response": {
                     "response_class": "tool",
