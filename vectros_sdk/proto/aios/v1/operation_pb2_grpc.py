@@ -3,7 +3,13 @@
 import grpc
 import warnings
 
-from aios.v1 import operation_pb2 as aios_dot_v1_dot_operation__pb2
+# Manually fixed: protoc generated an absolute `aios.v1` import assuming
+# `aios` is a top-level package, but it is vendored under `vectros_sdk.proto`.
+# This entire package currently fails to import without this fix (it blocked
+# every test in this suite, not just gRPC-specific ones, since
+# vectros_sdk/__init__.py imports it eagerly). Redo this fix if the file is
+# ever regenerated from operation.proto.
+from . import operation_pb2 as aios_dot_v1_dot_operation__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
