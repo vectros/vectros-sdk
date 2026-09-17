@@ -1,3 +1,21 @@
+# SEC.15 / SEC.1-class warning — READ BEFORE RUNNING:
+#
+# This script is an UNSANDBOXED, UNAUDITED PROTOTYPE, not part of the
+# packaged `vectros-sdk` distribution (it lives at the repo root, outside
+# the `vectros_sdk` package `pyproject.toml` actually ships) and not run by
+# any test suite or CI job. `execute_tool("run_command", ...)` below calls
+# `subprocess.run(cmd, shell=True)` on whatever command the connected LLM
+# backend decides to emit, with the operator's full host privileges and no
+# admission check of any kind — a model proposing a destructive command
+# will simply run it. It also depends on `GrpcTransport`, which talks to
+# `aiosd::grpc_server` (Path B: no `aios-core` admission, no accounting, no
+# audit trail — see CLAUDE.md and docs/architecture.md SS1-SS2).
+#
+# Kept only until the real, sandboxed AIOS Terminal (plan.md Phase 12a,
+# TERM.6's proposal+approval path) replaces it — do not extend this script,
+# do not wire it into anything else, and never run it against a host or
+# network you care about.
+
 import sys
 import os
 import json
