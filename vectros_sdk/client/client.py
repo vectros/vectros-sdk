@@ -5,6 +5,7 @@ Provides high-level client interfaces (`AIOSClient` / `CerebrumClient`) and
 specialized sub-clients for LLM, Memory, Storage, Tool, Post, and Agent subsystems.
 """
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union
 
 from vectros_sdk.agent.registry import (
@@ -14,6 +15,10 @@ from vectros_sdk.agent.registry import (
     register_agent,
 )
 from vectros_sdk.client.config import aios_kernel_url
+from vectros_sdk.transport.control_protocol import (
+    ControlProtocolClient,
+    ControlProtocolError,
+)
 from vectros_sdk.llm.api import (
     llm_call_tool,
     llm_chat,
@@ -544,6 +549,89 @@ class AgentClient:
         return list_registered_agents()
 
 
+class ControlClient:
+    """
+    Sub-client for the real operator control plane (SDK.9): live agent
+    lifecycle, run status, and cancellation against a real standing kernel
+    server (CTL.7's Tier 1 read verbs, CTL.8's Tier 2 intervene verbs) —
+    distinct from `AgentClient` above, which only registers local Python
+    agent *classes* and never touches a real server.
+
+    There is no HTTP-mock equivalent: the control plane exists only as a
+    real protocol over the standing server's dedicated control socket
+    (`aiosctl serve-kernel`, `<socket-path>.control`, CTL.11). Every method
+    here requires `AIOSClient(socket_path=...)`.
+    """
+
+    def __init__(self, client: "AIOSClient"):
+        self._c = client
+
+    def _connect(self) -> "ControlProtocolClient":
+        if not self._c.socket_path:
+            raise ControlProtocolError(
+                "AIOSClient.control requires socket_path=... — the operator "
+                "control plane has no HTTP-mock equivalent"
+            )
+        control_path = str(Path(self._c.socket_path).with_suffix(".control"))
+        return ControlProtocolClient(control_path)
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """Every known Agent, summarized (state, ownership counts, in-flight requests)."""
+        return self._connect().list_agents()
+
+    def describe_agent(self, agent_id: str) -> Dict[str, Any]:
+        """One Agent's full summary."""
+        return self._connect().describe_agent(agent_id)
+
+    def list_runs(self) -> List[Dict[str, Any]]:
+        """Every known Run, summarized."""
+        return self._connect().list_runs()
+
+    def describe_run(self, run_id: str) -> Dict[str, Any]:
+        """One Run's full summary, including its live `RunLifecycle` state."""
+        return self._connect().describe_run(run_id)
+
+    def queue_depths(self) -> Dict[str, int]:
+        """Per-class scheduler queue depth, across every Agent."""
+        return self._connect().queue_depths()
+
+    def budget_usage(self, agent_id: str) -> Dict[str, Any]:
+        """One Agent's live reserved/settled budget usage against its ceiling."""
+        return self._connect().budget_usage(agent_id)
+
+    def list_requests(self) -> List[Dict[str, Any]]:
+        """Every request the dispatcher currently tracks, regardless of owner."""
+        return self._connect().list_requests()
+
+    def cancel_request(self, request_id: str) -> str:
+        """Cancels one tracked request. Real and immediate if queued; only a
+        cooperative signal if already dispatched (this server runs each
+        request synchronously to completion — see the Rust server's own
+        `SystemCallDispatcher::cancel_any` doc comment)."""
+        return self._connect().cancel_request(request_id)
+
+    def suspend_run(self, run_id: str) -> Dict[str, Any]:
+        """Pauses a Run (`Running` -> `Quiescing`)."""
+        return self._connect().suspend_run(run_id)
+
+    def resume_run(self, run_id: str) -> Dict[str, Any]:
+        """Resumes a Run paused by `suspend_run`."""
+        return self._connect().resume_run(run_id)
+
+    def terminate_run(self, run_id: str, *, confirm: bool = False) -> Dict[str, Any]:
+        """Terminates a Run for real: drains its tracked requests and moves
+        its lifecycle to a terminal state. Requires `confirm=True` — a real
+        kill button is a foot-gun (plan.md's own Phase 22 note)."""
+        return self._connect().terminate_run(run_id, confirm=confirm)
+
+    def terminate_agent(self, agent_id: str, *, confirm: bool = False) -> Dict[str, Any]:
+        """Terminates an Agent for real: drains its requests, revokes every
+        grant on a resource it owns, disowns every ownership record, and
+        (single-tenant) also terminates the Run it owns. Requires
+        `confirm=True`."""
+        return self._connect().terminate_agent(agent_id, confirm=confirm)
+
+
 class AIOSClient:
     """
     Unified client orchestrator for interacting with the AIOS Kernel.
@@ -559,7 +647,9 @@ class AIOSClient:
         storage (StorageClient): Sub-client for filesystem operations.
         tool (ToolClient): Sub-client for tool calling and registry.
         post (PostClient): Sub-client for agent-to-agent messaging.
-        agent (AgentClient): Sub-client for agent registration.
+        agent (AgentClient): Sub-client for local agent class registration.
+        control (ControlClient): Sub-client for the real operator control
+            plane (live agent/run lifecycle, status, cancellation).
 
     Example:
         >>> from vectros_sdk import AIOSClient
@@ -604,6 +694,7 @@ class AIOSClient:
         self.tool = ToolClient(self)
         self.post = PostClient(self)
         self.agent = AgentClient(self)
+        self.control = ControlClient(self)
 
     def submit_operation(self, instance_id: str, run_id: str, operation_id: str, kind_int: int, payload: str = "{}") -> Dict[str, Any]:
         return self.kernel_client.submit(
