@@ -1,3 +1,12 @@
+"""
+Pure, mock-based unit tests for `BaseAgent`'s construction, registry, and
+call-argument-shape logic (SDK.10). These do not prove `BaseAgent` reaches
+a real kernel -- that is `test_agent_real_backend.py`, which also fixed a
+real gap this file's mocks had been silently papering over: `chat`/
+`remember`/`recall` never threaded a `socket_path` at all before that fix,
+so `BaseAgent` could only ever speak to the dead HTTP mock endpoint.
+"""
+
 import unittest
 from typing import Any, Dict, Union
 from unittest.mock import MagicMock, patch
@@ -74,6 +83,7 @@ class TestAgentAPI(unittest.TestCase):
             ],
             base_url=agent.base_url,
             llms=None,
+            socket_path=None,
         )
 
     @patch("vectros_sdk.agent.base.create_memory")
@@ -93,6 +103,7 @@ class TestAgentAPI(unittest.TestCase):
             content="Formula: a^2 + b^2 = c^2",
             metadata={"topic": "geometry"},
             base_url=agent.base_url,
+            socket_path=None,
         )
 
     @patch("vectros_sdk.agent.base.search_memories")
@@ -112,6 +123,7 @@ class TestAgentAPI(unittest.TestCase):
             query="geometry formulas",
             k=3,
             base_url=agent.base_url,
+            socket_path=None,
         )
 
     @patch("vectros_sdk.agent.base.search_memories")

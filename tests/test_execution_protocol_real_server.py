@@ -4,9 +4,11 @@ standing kernel server. No mocks: this starts the actual `aiosctl serve-kernel`
 process (built from this repository) and talks to it over a real Unix socket
 with `ExecutionProtocolClient`.
 
-This is deliberately not a `unittest.mock`-based test — see
-docs/architecture.md SDK.10 for why the rest of this test suite's mock-only
-coverage is a tracked gap, not a pattern to keep extending.
+This is deliberately not a `unittest.mock`-based test — see the kernel
+repo's todo.md SDK.10 entry for the full audit of which mock-only test
+files now have real-backend coverage elsewhere, which are correctly
+mock-only (no real backend exists to test against), and which needed a
+real fix, not just a real test.
 """
 
 import os

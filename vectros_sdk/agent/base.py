@@ -45,6 +45,7 @@ class BaseAgent(ABC):
         tools: Optional[List[Dict[str, Any]]] = None,
         llm_config: Optional[List[Dict[str, Any]]] = None,
         base_url: str = aios_kernel_url,
+        socket_path: Optional[str] = None,
     ):
         """
         Initialize the agent with name, system prompt, tools, and kernel configuration.
@@ -55,12 +56,17 @@ class BaseAgent(ABC):
             tools (Optional[List[Dict[str, Any]]], optional): Available tools list. Defaults to empty list.
             llm_config (Optional[List[Dict[str, Any]]], optional): LLM configuration list for model routing. Defaults to None.
             base_url (str, optional): AIOS kernel URL. Defaults to configured `aios_kernel_url`.
+            socket_path (Optional[str], optional): Path to a standing `aiosctl serve-kernel`
+                Unix socket. When given, `chat`/`remember`/`recall` route to the real kernel
+                instead of `base_url`'s dead HTTP mock endpoint (SDK.3's `real_kernel.py` path).
+                Defaults to None (HTTP mock path, unchanged).
         """
         self.agent_name = agent_name
         self.system_prompt = system_prompt or f"You are an AI assistant named {agent_name}."
         self.tools = tools or []
         self.llm_config = llm_config
         self.base_url = base_url
+        self.socket_path = socket_path
 
     @abstractmethod
     def run(self, task: Union[str, Dict[str, Any]]) -> Any:
@@ -102,6 +108,7 @@ class BaseAgent(ABC):
             messages=messages,
             base_url=self.base_url,
             llms=llms or self.llm_config,
+            socket_path=self.socket_path,
         )
 
     def remember(
@@ -127,6 +134,7 @@ class BaseAgent(ABC):
             content=content,
             metadata=metadata,
             base_url=self.base_url,
+            socket_path=self.socket_path,
         )
 
     def recall(
@@ -145,11 +153,17 @@ class BaseAgent(ABC):
             MemoryResponse: Response containing ranked matching memories.
 
         Raises:
-            AIOSKernelError: If kernel request fails.
+            MemoryFeatureUnimplemented: Always -- `search_memories` has no real AIOS
+                kernel equivalent (ARCH.6/MEM.6: no vector/semantic memory) and is
+                intentionally unimplemented rather than faked, in both the real-kernel
+                and HTTP-mock paths. `BaseAgent` subclasses (including this class's own
+                docstring example) must not build `run()` around `recall()` until a
+                real semantic memory backend exists.
         """
         return search_memories(
             agent_name=self.agent_name,
             query=query,
             k=k,
             base_url=self.base_url,
+            socket_path=self.socket_path,
         )

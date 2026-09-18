@@ -1,3 +1,10 @@
+"""
+Adversarial/concurrency stress tests for `BaseAgent`'s registry and pipeline
+wiring, all mock-based by design (concurrency and edge-case inputs, not
+backend correctness). Real end-to-end proof against a live kernel is
+`test_agent_real_backend.py` (SDK.10).
+"""
+
 import random
 import string
 import unittest
