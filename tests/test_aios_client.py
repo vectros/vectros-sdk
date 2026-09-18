@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from vectros_sdk import AIOSClient, CerebrumClient
+from vectros_sdk import AIOSClient, CerebrumClient, MemoryFeatureUnimplemented
 from vectros_sdk.llm.models import LLMResponse
 from vectros_sdk.memory.models import MemoryResponse
 from vectros_sdk.post.models import PostResponse
@@ -51,7 +51,6 @@ class TestAIOSClient(unittest.TestCase):
                 "response_class": "memory",
                 "success": True,
                 "memory_id": "mem_uni_1",
-                "search_results": [{"memory_id": "mem_uni_1", "content": "Fact 1", "score": 0.9}],
             }
         }
 
@@ -68,15 +67,17 @@ class TestAIOSClient(unittest.TestCase):
         resp4 = client.memory.delete("mem_uni_1")
         self.assertTrue(resp4.success)
 
-        resp5 = client.memory.create_agentic("Cognitive memory")
-        self.assertTrue(resp5.success)
+        # ARCH.6/MEM.6: no real kernel equivalent - explicitly unimplemented,
+        # never faked via whatever happens to be listening at base_url.
+        with self.assertRaises(MemoryFeatureUnimplemented):
+            client.memory.create_agentic("Cognitive memory")
 
         # Top level convenience
         resp6 = client.remember("Short memory")
         self.assertEqual(resp6.memory_id, "mem_uni_1")
 
-        resp7 = client.recall("search query", k=3)
-        self.assertEqual(len(resp7.search_results), 1)
+        with self.assertRaises(MemoryFeatureUnimplemented):
+            client.recall("search query", k=3)
 
     @patch("vectros_sdk.storage.api.send_request")
     def test_storage_subclient(self, mock_send):

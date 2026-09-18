@@ -296,6 +296,10 @@ class MemoryClient:
 
         Returns:
             MemoryResponse: Response containing ranked search_results.
+
+        Raises:
+            MemoryFeatureUnimplemented: Always. See `vectros_sdk.memory.api.search_memories`
+                (ARCH.6/MEM.6: no real AIOS kernel equivalent).
         """
         return search_memories(
             agent_name=self._c.agent_name or "default_agent",
@@ -319,6 +323,10 @@ class MemoryClient:
 
         Returns:
             MemoryResponse: Response with memory ID.
+
+        Raises:
+            MemoryFeatureUnimplemented: Always. See `vectros_sdk.memory.api.create_agentic_memory`
+                (ARCH.6/MEM.6: no real AIOS kernel equivalent). Use `create` instead.
         """
         return create_agentic_memory(
             agent_name=self._c.agent_name or "default_agent",
@@ -670,6 +678,11 @@ class AIOSClient:
 
         Returns:
             MemoryResponse: Search results matching the query.
+
+        Raises:
+            MemoryFeatureUnimplemented: Always. Semantic memory search has no real
+                AIOS kernel equivalent (ARCH.6/MEM.6) and is intentionally
+                unimplemented rather than faked.
         """
         return self.memory.search(query, k=k)
 

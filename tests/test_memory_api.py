@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
 from vectros_sdk import (
+    MemoryFeatureUnimplemented,
     MemoryQuery,
     MemoryResponse,
     create_agentic_memory,
@@ -164,58 +165,27 @@ class TestMemoryAPIFunctions(unittest.TestCase):
         self.assertEqual(called_query.memory_id, "mem_abc123")
 
     @patch("vectros_sdk.memory.api.send_request")
-    def test_search_memories(self, mock_send_request):
-        mock_send_request.return_value = {
-            "response": {
-                "success": True,
-                "search_results": [
-                    {
-                        "memory_id": "mem_abc123",
-                        "content": "Updated timeline decision...",
-                        "score": 0.92,
-                        "metadata": {"priority": "critical"},
-                    }
-                ],
-                "error": None,
-            }
-        }
-
-        resp = search_memories(agent_name="project_bot", query="timeline changes", k=3)
-
-        self.assertTrue(resp.success)
-        self.assertEqual(len(resp.search_results), 1)
-        self.assertEqual(resp.search_results[0]["score"], 0.92)
-
-        called_query = mock_send_request.call_args[0][0]
-        self.assertEqual(called_query.action_type, "search")
-        self.assertEqual(called_query.query, "timeline changes")
-        self.assertEqual(called_query.k, 3)
+    def test_search_memories_is_explicitly_unimplemented(self, mock_send_request):
+        # ARCH.6/MEM.6: no real AIOS kernel equivalent exists (no vector/semantic
+        # memory) - this must raise before ever reaching send_request, not fake a
+        # result via whatever happens to be listening at base_url.
+        with self.assertRaises(MemoryFeatureUnimplemented):
+            search_memories(agent_name="project_bot", query="timeline changes", k=3)
+        mock_send_request.assert_not_called()
 
     @patch("vectros_sdk.memory.api.send_request")
-    def test_create_agentic_memory(self, mock_send_request):
-        mock_send_request.return_value = {
-            "response": {
-                "success": True,
-                "memory_id": "mem_agentic_999",
-                "content": None,
-                "metadata": None,
-                "error": None,
-            }
-        }
-
-        resp = create_agentic_memory(
-            agent_name="research_bot",
-            content="Breakthrough in protein folding: Achieved 92% accuracy",
-            metadata={"system": "scientific_discovery"},
-        )
-
-        self.assertTrue(resp.success)
-        self.assertEqual(resp.memory_id, "mem_agentic_999")
-
-        called_query = mock_send_request.call_args[0][0]
-        self.assertEqual(called_query.action_type, "create_agentic")
-        self.assertEqual(called_query.agent_name, "research_bot")
-        self.assertEqual(called_query.metadata["system"], "scientific_discovery")
+    def test_create_agentic_memory_is_explicitly_unimplemented(self, mock_send_request):
+        # ARCH.6/MEM.6: no dynamic linking/auto-clustering/cognitive tagging exists
+        # in the real AIOS kernel - this must raise before ever reaching
+        # send_request, not fake a result via whatever happens to be listening at
+        # base_url.
+        with self.assertRaises(MemoryFeatureUnimplemented):
+            create_agentic_memory(
+                agent_name="research_bot",
+                content="Breakthrough in protein folding: Achieved 92% accuracy",
+                metadata={"system": "scientific_discovery"},
+            )
+        mock_send_request.assert_not_called()
 
     @patch("vectros_sdk.memory.api.send_request")
     def test_memory_api_error_propagation(self, mock_send_request):

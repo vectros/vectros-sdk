@@ -7,7 +7,10 @@ over TCP sockets to the AIOS Kernel server without any mock monkeypatching:
 2. Initialises `AIOSClient(base_url="http://127.0.0.1:<port>")`.
 3. Dispatches REAL HTTP POST requests across all subsystems:
    - LLM Core API (`chat`, `chat_json`)
-   - Memory API (`create_agentic`, `search`, `remember`, `recall`)
+   - Memory API (`create`, `get`, `update`, `delete`, `remember`) — semantic
+     search and agentic memory (`search`, `create_agentic`, `recall`) are out
+     of scope for the real kernel (ARCH.6/MEM.6) and intentionally not
+     demonstrated here as if they worked
    - Storage API (`mount`, `create_dir`, `create_file`, `write_file`, `retrieve_file`, `rollback_file`, `share_file`)
    - Tool API (`call_tool` with local & kernel tools)
    - Post API (`send_post`, `receive_posts`, `publish_to_topic`, `subscribe_topic`, `broadcast_post`)
@@ -170,16 +173,20 @@ def run_demonstration(base_url: Optional[str] = None, auto_start_server: bool = 
         # =====================================================================
         print_banner("6. Phase 4: Unified AIOSClient High-Level Helpers (Live HTTP)")
 
-        # 6.1 Top-level remember and recall
-        print("-> 6.1 Real HTTP POST: client.remember() & client.recall():")
+        # 6.1 Top-level remember, then a plain get by the ID it returned.
+        # `client.recall()` (semantic search) is not demonstrated here: ARCH.6/
+        # MEM.6 mark it explicitly unimplemented rather than faked, so calling
+        # it would raise `MemoryFeatureUnimplemented` even against this mock.
+        print("-> 6.1 Real HTTP POST: client.remember() & client.memory.get():")
         rem_resp = client.remember(
             content="AIOS provides unified multi-agent operating system primitives.",
             metadata={"category": "architecture", "version": "1.0"},
         )
-        print(f"   * Remembered memory ID (from Kernel response): {rem_resp.get('memory_id')}")
+        remembered_id = rem_resp.get("memory_id")
+        print(f"   * Remembered memory ID (from Kernel response): {remembered_id}")
 
-        rec_resp = client.recall(query="operating system primitives", k=2)
-        print(f"   * Recalled results count (from Kernel response): {len(rec_resp.get('results', []))}")
+        get_resp = client.memory.get(remembered_id)
+        print(f"   * Fetched back by ID (from Kernel response): {get_resp.get('content')}")
 
         # 6.2 Top-level direct messaging
         print("\n-> 6.2 Real HTTP POST: client.send_message():")

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from vectros_sdk import (
     AIOSKernelError,
+    MemoryFeatureUnimplemented,
     MemoryQuery,
     MemoryResponse,
     create_agentic_memory,
@@ -63,13 +64,13 @@ class TestBrutalMemorySuite(unittest.TestCase):
 
     @patch("vectros_sdk.memory.api.send_request")
     def test_concurrent_memory_hammering(self, mock_send_request):
-        """100 threads concurrently executing create, get, update, search, delete."""
+        """100 threads concurrently executing create, get, update, delete, and
+        confirming search/create_agentic stay honestly unimplemented under load."""
         mock_send_request.side_effect = lambda query, base_url=None, **_kwargs: {
             "response": {
                 "success": True,
                 "memory_id": f"mem_{query.agent_name}_{query.action_type}",
                 "content": f"Content for {query.agent_name}",
-                "search_results": [{"memory_id": "m1", "score": 0.99}],
                 "status_code": 200,
             }
         }
@@ -85,17 +86,27 @@ class TestBrutalMemorySuite(unittest.TestCase):
             time.sleep(random.uniform(0.0005, 0.005))
             if op == "create":
                 res = create_memory(agent, "some note")
-            elif op == "get":
+                return res.success
+            if op == "get":
                 res = get_memory(agent, f"mem_{worker_id}")
-            elif op == "update":
+                return res.success
+            if op == "update":
                 res = update_memory(agent, f"mem_{worker_id}", content="updated")
-            elif op == "delete":
+                return res.success
+            if op == "delete":
                 res = delete_memory(agent, f"mem_{worker_id}")
-            elif op == "search":
-                res = search_memories(agent, "query", k=3)
-            else:
-                res = create_agentic_memory(agent, "agentic context")
-            return res.success
+                return res.success
+            if op == "search":
+                try:
+                    search_memories(agent, "query", k=3)
+                    return False
+                except MemoryFeatureUnimplemented:
+                    return True
+            try:
+                create_agentic_memory(agent, "agentic context")
+                return False
+            except MemoryFeatureUnimplemented:
+                return True
 
         with ThreadPoolExecutor(max_workers=20) as executor:
             futures = [executor.submit(worker, i) for i in range(thread_count)]
@@ -109,29 +120,11 @@ class TestBrutalMemorySuite(unittest.TestCase):
         self.assertEqual(len(results), thread_count)
         self.assertTrue(all(results))
 
-    @patch("vectros_sdk.memory.api.send_request")
-    def test_search_results_boundary_scores(self, mock_send_request):
-        """Fuzzing search results with 10,000 items, extreme scores (negative, huge, precision)."""
-        huge_search_results = [
-            {
-                "memory_id": f"mem_{i}",
-                "content": f"Match {i}",
-                "score": float(i) / 1000.0,
-                "metadata": {"rank": i}
-            }
-            for i in range(5000)
-        ]
-        mock_send_request.return_value = {
-            "response": {
-                "success": True,
-                "search_results": huge_search_results,
-            }
-        }
-
-        resp = search_memories("search_bot", "query", k=5000)
-        self.assertEqual(len(resp.search_results), 5000)
-        self.assertEqual(resp.search_results[4999]["memory_id"], "mem_4999")
-        self.assertEqual(resp["response"]["search_results"][4999]["score"], 4.999)
+    def test_search_memories_stays_unimplemented_regardless_of_k(self):
+        """Fuzzing k does not change the outcome: search stays honestly unimplemented."""
+        for k in (0, 1, 5000, -1):
+            with self.assertRaises(MemoryFeatureUnimplemented):
+                search_memories("search_bot", "query", k=k)
 
 
 if __name__ == "__main__":

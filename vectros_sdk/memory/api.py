@@ -12,6 +12,28 @@ from vectros_sdk.client.send_request import send_request
 from vectros_sdk.memory.models import MemoryQuery, MemoryResponse
 
 
+class MemoryFeatureUnimplemented(NotImplementedError):
+    """Raised by `search_memories`/`create_agentic_memory`.
+
+    ARCH.6 decided semantic/vector memory search and autonomous (A-mem)
+    memory organization are out of scope: no AIOS architecture diagram
+    shows one, and `kernel.md` already defers "semantic storage, vector
+    databases" until evidence requires them. The real AIOS kernel's
+    `MemoryManager` (see `crates/aios-core/src/kernel/memory_manager.rs`)
+    only ever supports plain key/value get/put/delete — there is no
+    ranking, embedding, or clustering behind it.
+
+    These two functions raise here, before any network call, rather than
+    reaching `send_request`: pointed at `base_url` with nothing listening
+    they would just fail with a connection error, but pointed at the
+    bundled demo (`vectros_sdk.examples.server.mock_kernel_server`) they
+    would silently "succeed" against fabricated similarity scores and a
+    fabricated seed result for empty queries — a demo fixture standing in
+    for a capability the real kernel does not have. Raising unconditionally
+    keeps that demo honestly a demo.
+    """
+
+
 def _parse_memory_response(raw_resp: Dict[str, Any]) -> MemoryResponse:
     """
     Parse raw response dictionary from kernel into a typed MemoryResponse object.
@@ -208,22 +230,21 @@ def search_memories(
         MemoryResponse: Response object containing `search_results` with memory IDs and similarity scores.
 
     Raises:
-        AIOSKernelError: If kernel communication fails.
+        MemoryFeatureUnimplemented: Always. Semantic memory search is out of scope
+            for the real AIOS kernel (ARCH.6) — see `MemoryFeatureUnimplemented`.
 
     Example:
         >>> from vectros_sdk.memory.api import search_memories
         >>> resp = search_memories("project_bot", query="timeline decisions", k=3)
-        >>> for item in resp.search_results:
-        ...     print(item["content"], item["score"])
+        Traceback (most recent call last):
+            ...
+        vectros_sdk.memory.api.MemoryFeatureUnimplemented: ...
     """
-    query_obj = MemoryQuery(
-        agent_name=agent_name,
-        action_type="search",
-        query=query,
-        k=k,
+    raise MemoryFeatureUnimplemented(
+        "search_memories has no real AIOS kernel equivalent (ARCH.6: no vector/"
+        "semantic memory) and is intentionally unimplemented rather than faked "
+        "against a demo mock server."
     )
-    raw_response = send_request(query_obj, base_url=base_url, socket_path=socket_path)
-    return _parse_memory_response(raw_response)
 
 
 def create_agentic_memory(
@@ -248,7 +269,9 @@ def create_agentic_memory(
         MemoryResponse: Response object containing assigned memory_id and status.
 
     Raises:
-        AIOSKernelError: If kernel communication fails.
+        MemoryFeatureUnimplemented: Always. Autonomous cognitive memory organization
+            is out of scope for the real AIOS kernel (ARCH.6) — see
+            `MemoryFeatureUnimplemented`. Use `create_memory` for plain storage.
 
     Example:
         >>> from vectros_sdk.memory.api import create_agentic_memory
@@ -257,12 +280,13 @@ def create_agentic_memory(
         ...     content="Breakthrough in transformer attention scaling.",
         ...     metadata={"field": "ai_research"}
         ... )
+        Traceback (most recent call last):
+            ...
+        vectros_sdk.memory.api.MemoryFeatureUnimplemented: ...
     """
-    query = MemoryQuery(
-        agent_name=agent_name,
-        action_type="create_agentic",
-        content=content,
-        metadata=metadata or {},
+    raise MemoryFeatureUnimplemented(
+        "create_agentic_memory has no real AIOS kernel equivalent (ARCH.6: no "
+        "dynamic linking/auto-clustering/cognitive tagging) and is intentionally "
+        "unimplemented rather than faked against a demo mock server. Use "
+        "create_memory for plain, real key/value storage."
     )
-    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
-    return _parse_memory_response(raw_response)

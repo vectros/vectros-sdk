@@ -24,7 +24,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from vectros_sdk.client.client import AIOSClient  # noqa: E402
 from vectros_sdk.client.real_kernel import RealBackendUnsupported  # noqa: E402
-from vectros_sdk.memory.api import create_memory, delete_memory, get_memory, update_memory  # noqa: E402
+from vectros_sdk.memory.api import (  # noqa: E402
+    MemoryFeatureUnimplemented,
+    create_memory,
+    delete_memory,
+    get_memory,
+    update_memory,
+)
 from vectros_sdk.storage.api import create_file, write_file  # noqa: E402
 from vectros_sdk.tool.api import call_tool  # noqa: E402
 
@@ -142,8 +148,12 @@ class TestRealKernelClient(unittest.TestCase):
         self.assertTrue(deleted.success)
 
     def test_memory_search_has_no_real_equivalent_and_is_refused_not_faked(self) -> None:
+        # MEM.6: search_memories is unconditionally unimplemented (ARCH.6) and
+        # raises before ever reaching the real-kernel transport, so this is
+        # MemoryFeatureUnimplemented rather than the transport-level
+        # RealBackendUnsupported the other "no real equivalent" cases raise.
         client = AIOSClient(agent_name=self._agent_suffix(), socket_path=str(self.socket_path))
-        with self.assertRaises(RealBackendUnsupported):
+        with self.assertRaises(MemoryFeatureUnimplemented):
             client.memory.search("anything")
 
     def test_storage_create_file_and_write_file_round_trip_through_the_real_kernel(self) -> None:

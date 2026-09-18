@@ -25,11 +25,17 @@ an authority channel (no tool invocation, no approval, no terminal-success
 commands — see that module's docstring).
 
 `GrpcTransport` itself, its vendored proto stubs, and the standalone demo
-scripts that call it directly (`test_grpc.py`, `test_tools.py`,
-`host_agent.py`) are untouched: plan.md Principle 3 ("delete only after
-replacement") ties their removal to the Terminal's proposal+approval path
-(TERM.6/TERM.12/SEC.15), not to this consolidation. This module simply stops
-being one more thing that reaches for Path B by default.
+scripts that call it directly (`test_grpc.py`, `test_tools.py`) are
+untouched: plan.md Principle 3 ("delete only after replacement") ties their
+removal to something else, not to this consolidation. This module simply
+stops being one more thing that reaches for Path B by default.
+
+TERM.6/TERM.12/SEC.15 (2026-09-17): `host_agent.py` -- the unsandboxed
+prototype this comment used to list here alongside the demo scripts above --
+has been deleted now that the real AIOS Terminal (`vectros_sdk.terminal`,
+plan.md Phase 12a) ships a real proposal+approval path. It was never one of
+the demo scripts kept for a reason; it was kept only until this replacement
+existed.
 """
 
 import logging

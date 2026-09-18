@@ -23,6 +23,7 @@ from vectros_sdk.llm.api import (
 )
 from vectros_sdk.llm.models import LLMQuery, LLMResponse
 from vectros_sdk.memory.api import (
+    MemoryFeatureUnimplemented,
     create_agentic_memory,
     create_memory,
     delete_memory,
@@ -80,6 +81,7 @@ __all__ = [
     "llm_operate_file",
     "MemoryQuery",
     "MemoryResponse",
+    "MemoryFeatureUnimplemented",
     "create_memory",
     "get_memory",
     "update_memory",

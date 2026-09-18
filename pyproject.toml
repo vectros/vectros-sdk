@@ -24,6 +24,7 @@ dev = [
 ]
 
 [project.scripts]
+aios-terminal = "vectros_sdk.terminal.repl:main"
 list-toolhub-tools = "vectros_sdk.commands.list_toolhub:main"
 list-local-tools = "vectros_sdk.commands.list_local_tools:main"
 download-tool = "vectros_sdk.commands.download_tool:main"

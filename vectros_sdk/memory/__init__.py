@@ -1,6 +1,7 @@
 """Memory module."""
 
 from vectros_sdk.memory.api import (
+    MemoryFeatureUnimplemented,
     create_agentic_memory,
     create_memory,
     delete_memory,
@@ -13,6 +14,7 @@ from vectros_sdk.memory.models import MemoryQuery, MemoryResponse
 __all__ = [
     "MemoryQuery",
     "MemoryResponse",
+    "MemoryFeatureUnimplemented",
     "create_memory",
     "get_memory",
     "update_memory",

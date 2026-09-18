@@ -4,7 +4,9 @@ Research Analyst Agent implementation for AIOS Vectros SDK.
 Demonstrates:
 - Subclassing `BaseAgent`
 - Using `AIOSClient` with scoped sub-clients (`.memory`, `.tool`, `.llm`, `.post`)
-- Semantic memory retrieval and episodic memory creation
+- Plain key/value memory storage and retrieval (real AIOS Memory Manager
+  capability — see ARCH.6/MEM.6: semantic search and agentic/A-mem memory
+  have no real kernel equivalent and are intentionally not used here)
 - Custom tool execution
 - Structured JSON output generation
 """
@@ -18,9 +20,10 @@ from vectros_sdk.client.config import aios_kernel_url
 
 class ResearchAnalystAgent(BaseAgent):
     """
-    Agent specialized in researching topics, recalling domain memories,
-    executing quantitative tools, synthesizing insights with LLMs, and saving
-    structured findings.
+    Agent specialized in researching topics, executing quantitative tools,
+    synthesizing insights with LLMs, and saving structured findings to plain
+    key/value memory (the real AIOS Memory Manager's only supported shape —
+    see ARCH.6/MEM.6 for why semantic recall is not used here).
     """
 
     def __init__(
@@ -47,7 +50,7 @@ class ResearchAnalystAgent(BaseAgent):
             base_url=effective_base_url,
         )
         self.name = self.agent_name
-        self.description = "Analyzes complex data, searches semantic memory, executes tools, and creates structured research dossiers."
+        self.description = "Analyzes complex data, executes tools, and saves structured research findings to key/value memory."
         self.client = client or AIOSClient(base_url=effective_base_url, agent_name=self.agent_name)
 
     def run(self, input_data: Any) -> Dict[str, Any]:
@@ -80,11 +83,16 @@ class ResearchAnalystAgent(BaseAgent):
     ) -> Dict[str, Any]:
         """
         Full research lifecycle:
-        1. Search previous memories for related context (`client.recall`).
-        2. Perform calculations with math tool if numerical data is provided.
-        3. Synthesize conclusions using structured LLM (`client.llm.chat_json`).
-        4. Store structured insights in agentic memory (`client.memory.create_agentic`).
-        5. Optionally notify coordinator via Post API.
+        1. Perform calculations with math tool if numerical data is provided.
+        2. Synthesize conclusions using structured LLM (`client.llm.chat_json`).
+        3. Store structured insights in plain memory (`client.memory.create`) and
+           read them back to prove they actually persisted.
+        4. Optionally notify coordinator via Post API.
+
+        Note: this deliberately does not search prior research by topic before
+        synthesizing — semantic memory search has no real AIOS kernel
+        equivalent (ARCH.6/MEM.6) and `client.recall`/`client.memory.search`
+        raise `MemoryFeatureUnimplemented` rather than fake a result.
 
         Args:
             topic: Research subject.
@@ -94,13 +102,7 @@ class ResearchAnalystAgent(BaseAgent):
         Returns:
             Dict[str, Any]: Research report with synthesis, metrics, and memory ID.
         """
-        # 1. Memory recall
-        recalled_memories = self.client.recall(query=topic, k=3)
-        prior_context = [
-            m.get("content", "") for m in recalled_memories.get("results", []) if isinstance(m, dict)
-        ]
-
-        # 2. Tool calculation (if numbers provided)
+        # 1. Tool calculation (if numbers provided)
         stats: Dict[str, Any] = {}
         if numbers:
             math_resp = self.client.tool.call(
@@ -119,10 +121,9 @@ class ResearchAnalystAgent(BaseAgent):
             )
             stats["variance"] = var_resp.get("response_message") or var_resp.get("result")
 
-        # 3. LLM synthesis
+        # 2. LLM synthesis
         prompt = (
             f"Analyze research topic: '{topic}'.\n"
-            f"Prior Context: {prior_context}\n"
             f"Statistical Metrics: {stats}\n"
             "Provide key findings, confidence score, and recommendations."
         )
@@ -145,23 +146,25 @@ class ResearchAnalystAgent(BaseAgent):
         )
         synthesis = llm_resp.response_message or str(llm_resp.raw_response)
 
-        # 4. Save to Agentic Memory
-        mem_resp = self.client.memory.create_agentic(
+        # 3. Save to plain memory, then read it back to prove it actually
+        # persisted (the real Memory Manager's only real capability).
+        mem_resp = self.client.memory.create(
             content=f"Research on '{topic}': {synthesis}",
             metadata={"tags": ["research", topic.lower().replace(" ", "_")], "stats": stats, "confidence": 0.95},
         )
         memory_id = mem_resp.get("memory_id")
+        readback = self.client.memory.get(memory_id) if memory_id else None
 
         result = {
             "agent": self.agent_name,
             "topic": topic,
-            "prior_memories_found": len(prior_context),
             "statistics": stats,
             "synthesis": synthesis,
             "saved_memory_id": memory_id,
+            "saved_memory_verified": bool(readback and readback.get("success")),
         }
 
-        # 5. Direct Post notification to coordinator if requested
+        # 4. Direct Post notification to coordinator if requested
         if coordinator_name:
             self.client.post.send(
                 recipient=coordinator_name,

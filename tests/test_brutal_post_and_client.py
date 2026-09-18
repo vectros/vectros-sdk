@@ -9,6 +9,7 @@ from vectros_sdk import (
     AIOSClient,
     AIOSKernelError,
     CerebrumClient,
+    MemoryFeatureUnimplemented,
     PostQuery,
     PostResponse,
     broadcast_post,
@@ -17,6 +18,15 @@ from vectros_sdk import (
     send_post,
     subscribe_topic,
 )
+
+
+def _expect_unimplemented(call):
+    """Assert `call` raises MemoryFeatureUnimplemented; re-raise anything else."""
+    try:
+        call()
+    except MemoryFeatureUnimplemented:
+        return True
+    raise AssertionError("expected MemoryFeatureUnimplemented, call succeeded")
 
 
 class TestBrutalPostAndClientSuite(unittest.TestCase):
@@ -129,7 +139,10 @@ class TestBrutalPostAndClientSuite(unittest.TestCase):
             actions = [
                 lambda: client.chat(f"Question {idx}"),
                 lambda: client.remember(f"Memory {idx}"),
-                lambda: client.recall(f"Query {idx}"),
+                # client.recall() is ARCH.6/MEM.6-unimplemented (no real semantic
+                # search) and must raise even under concurrent hammering, not
+                # silently succeed against whatever backend is mocked.
+                lambda: _expect_unimplemented(lambda: client.recall(f"Query {idx}")),
                 lambda: client.storage.create_file(f"file_{idx}.txt"),
                 lambda: client.tool.call([{"name": f"tool_{idx}", "parameters": {}}]),
                 lambda: client.send_message(f"target_{idx}", f"Hello {idx}"),
