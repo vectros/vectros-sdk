@@ -24,18 +24,30 @@ only ever speaks the small, deliberately-scoped UDS development protocol
 an authority channel (no tool invocation, no approval, no terminal-success
 commands — see that module's docstring).
 
-`GrpcTransport` itself, its vendored proto stubs, and the standalone demo
-scripts that call it directly (`test_grpc.py`, `test_tools.py`) are
-untouched: plan.md Principle 3 ("delete only after replacement") ties their
-removal to something else, not to this consolidation. This module simply
-stops being one more thing that reaches for Path B by default.
+At the time, `GrpcTransport` itself, its vendored proto stubs, and the
+standalone demo scripts that called it directly (`test_grpc.py`,
+`test_tools.py`) were left untouched: plan.md Principle 3 ("delete only
+after replacement") tied their removal to `host_agent.py`'s own removal
+(TERM.6/TERM.12/SEC.15), not to this consolidation.
 
 TERM.6/TERM.12/SEC.15 (2026-09-17): `host_agent.py` -- the unsandboxed
 prototype this comment used to list here alongside the demo scripts above --
-has been deleted now that the real AIOS Terminal (`vectros_sdk.terminal`,
-plan.md Phase 12a) ships a real proposal+approval path. It was never one of
-the demo scripts kept for a reason; it was kept only until this replacement
+was deleted once the real AIOS Terminal (`vectros_sdk.terminal`, plan.md
+Phase 12a) shipped a real proposal+approval path. It was never one of the
+demo scripts kept for a reason; it was kept only until this replacement
 existed.
+
+SYS.10 (2026-09-18): with `host_agent.py` gone and nothing in this package
+importing `GrpcTransport` for real use (confirmed by grep — only this
+docstring mentioned it), `GrpcTransport`, its vendored proto stubs
+(`vectros_sdk/proto/`), and the two now-orphaned demo scripts
+(`test_grpc.py`, `test_tools.py`) were deleted for real. They were already
+non-functional as demos regardless: the real `aiosd::grpc_server` they
+targeted was rewritten for SYS.7 into a real, single-tenant kernel wrapper
+that honestly implements only `OperationKind::READ_MEMORY`, and both
+scripts submitted operation kinds (`INFER`, tool-calling payloads) that
+server now correctly rejects with `Status::unimplemented` rather than the
+fake responses it used to fabricate.
 """
 
 import logging
