@@ -163,6 +163,22 @@ class ControlProtocolClient:
             )
         return _unwrap(self._call({"TerminateAgent": agent_id}), "AgentTerminated")
 
+    # --- Tier 3: tool-call approval (operator.approve, CTL.10) --------------
+    #
+    # The server half (CTL.10) is opt-in per server (AIOS_REQUIRE_TOOL_APPROVAL=1);
+    # against a server that never defers anything, `list_pending_approvals`
+    # is simply always empty and `approve_tool`/`deny_tool` always answer
+    # "unknown approval" -- real, not fabricated, answers either way.
+
+    def list_pending_approvals(self) -> List[Dict[str, Any]]:
+        return _unwrap(self._call("ListPendingApprovals"), "PendingApprovals")
+
+    def approve_tool(self, approval_id: str) -> str:
+        return _unwrap(self._call({"ApproveTool": approval_id}), "ToolApproved")
+
+    def deny_tool(self, approval_id: str) -> str:
+        return _unwrap(self._call({"DenyTool": approval_id}), "ToolDenied")
+
 
 def _unwrap(response: Any, variant: str) -> Any:
     if isinstance(response, dict) and variant in response:

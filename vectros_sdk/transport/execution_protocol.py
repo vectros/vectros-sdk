@@ -39,7 +39,18 @@ PROTOCOL_VERSION = {"major": 1, "minor": 3}
 
 
 class ExecutionProtocolError(Exception):
-    """Raised for framing, I/O, or server-rejection failures. Never silent."""
+    """Raised for framing, I/O, or server-rejection failures. Never silent.
+
+    ``code`` carries the server's own rejection code (e.g. ``"pending_approval"``,
+    ``"approval_denied"``, ``"busy"``) for a genuine server rejection --
+    ``None`` for a framing/I/O error, which never reached the server at all.
+    SDK.7's approval-callback wrapper matches on this rather than parsing
+    the message string.
+    """
+
+    def __init__(self, message: str, code: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _write_frame(sock: socket.socket, payload: Dict[str, Any]) -> None:
@@ -123,7 +134,7 @@ class ExecutionProtocolClient:
         response = _read_frame(self._sock)
         if "Rejected" in response:
             code = response["Rejected"].get("code", "unknown")
-            raise ExecutionProtocolError(f"server rejected {request_id}: {code}")
+            raise ExecutionProtocolError(f"server rejected {request_id}: {code}", code=code)
         if "Completed" not in response:
             raise ExecutionProtocolError(f"unexpected response shape: {response!r}")
         return response["Completed"]["value"]

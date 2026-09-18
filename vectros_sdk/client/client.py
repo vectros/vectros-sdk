@@ -631,6 +631,25 @@ class ControlClient:
         `confirm=True`."""
         return self._connect().terminate_agent(agent_id, confirm=confirm)
 
+    def list_pending_approvals(self) -> List[Dict[str, Any]]:
+        """Every ToolInvoke call currently held pending review (CTL.10,
+        Tier 3). Always empty against a server that never gates tool calls
+        (`AIOS_REQUIRE_TOOL_APPROVAL` unset) — a real, not fabricated,
+        answer either way."""
+        return self._connect().list_pending_approvals()
+
+    def approve_tool(self, approval_id: str) -> str:
+        """Approves exactly one pending call by id. Does not itself invoke
+        the tool — it only lets a subsequent retry of the identical
+        `ToolInvoke` (same agent, run, tool, and exact arguments) proceed;
+        the approval is consumed by that one retry."""
+        return self._connect().approve_tool(approval_id)
+
+    def deny_tool(self, approval_id: str) -> str:
+        """Denies exactly one pending call by id. Its next retry is refused
+        with `approval_denied`, not silently re-queued."""
+        return self._connect().deny_tool(approval_id)
+
 
 class AIOSClient:
     """
