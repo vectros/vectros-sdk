@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import socket
 import struct
+import time
 from typing import Any, Dict, Optional
 
 MAX_FRAME_BYTES = 1024 * 1024
@@ -121,6 +122,14 @@ class ExecutionProtocolClient:
         Raises ``ExecutionProtocolError`` if the server rejects the request
         or the response has an unexpected shape. Never returns a fabricated
         result for a rejected or malformed response.
+
+        SCH.8a: a real-backend ``ModelGenerate`` returns ``Queued``
+        immediately rather than blocking this connection for the full
+        generation -- this method polls ``KernelRequest::RequestResult``
+        (the server's own in-memory, authorization-checked read of a past
+        submission) until it settles, transparently to the caller, so every
+        existing caller of ``execute()`` keeps its original one-call
+        contract without needing to know about the poll.
         """
         envelope = {
             "version": PROTOCOL_VERSION,
@@ -132,12 +141,43 @@ class ExecutionProtocolClient:
         }
         _write_frame(self._sock, envelope)
         response = _read_frame(self._sock)
+        return self._resolve(request_id, response, deadline_ms)
+
+    def _resolve(
+        self, request_id: str, response: Dict[str, Any], deadline_ms: int
+    ) -> Dict[str, Any]:
         if "Rejected" in response:
             code = response["Rejected"].get("code", "unknown")
             raise ExecutionProtocolError(f"server rejected {request_id}: {code}", code=code)
+        if "Queued" in response:
+            return self._poll_until_settled(response["Queued"]["request_id"], deadline_ms)
         if "Completed" not in response:
             raise ExecutionProtocolError(f"unexpected response shape: {response!r}")
         return response["Completed"]["value"]
+
+    def _poll_until_settled(self, request_id: str, deadline_ms: int) -> Dict[str, Any]:
+        deadline = time.monotonic() + deadline_ms / 1000.0
+        poll_count = 0
+        while True:
+            poll_count += 1
+            if time.monotonic() >= deadline:
+                raise ExecutionProtocolError(
+                    f"timed out polling for {request_id} to settle"
+                )
+            envelope = {
+                "version": PROTOCOL_VERSION,
+                "request_id": f"{request_id}_poll_{poll_count}",
+                "deadline": deadline_ms,
+                "request": {"RequestResult": {"request": request_id}},
+                "trace_id": None,
+                "span_id": None,
+            }
+            _write_frame(self._sock, envelope)
+            response = _read_frame(self._sock)
+            if "Queued" in response:
+                time.sleep(0.02)
+                continue
+            return self._resolve(request_id, response, deadline_ms)
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,20 @@
 """
-AIOS Vectros SDK - Real Multi-Agent HTTP Request & Response Demonstration.
+AIOS Vectros SDK - Multi-Agent HTTP Request & Response Demonstration.
 
-This script demonstrates end-to-end multi-agent execution making REAL HTTP requests
-over TCP sockets to the AIOS Kernel server without any mock monkeypatching:
-1. Starts a real HTTP server on localhost TCP port handling `/query`.
+**This demonstrates real HTTP wire traffic (a real TCP socket, real HTTP
+requests/responses) against a FAKE, in-process stand-in kernel
+(`vectros_sdk.examples.server.mock_kernel_server.FakeAIOSKernelServer`) --
+not the real AIOS kernel (`aios-core`/`aiosd`). See that module's own
+docstring. For a real sandboxed-kernel run of these same agents, see
+`vectros-sdk/tests/test_examples_real_backend.py` (ASBX.16), which uses
+`vectros_sdk.testing.AgentSandbox` instead.**
+
+This script exercises end-to-end multi-agent execution making real HTTP
+requests over TCP sockets to that fake kernel server, without any mock
+monkeypatching of the HTTP layer itself:
+1. Starts the fake HTTP server on localhost TCP port handling `/query`.
 2. Initialises `AIOSClient(base_url="http://127.0.0.1:<port>")`.
-3. Dispatches REAL HTTP POST requests across all subsystems:
+3. Dispatches real HTTP POST requests across all subsystems:
    - LLM Core API (`chat`, `chat_json`)
    - Memory API (`create`, `get`, `update`, `delete`, `remember`) — semantic
      search and agentic memory (`search`, `create_agentic`, `recall`) are out
@@ -36,7 +45,7 @@ from vectros_sdk.tool.core.registry import (
     register_tool,
 )
 
-# Import custom example agents, tools, and live HTTP server
+# Import custom example agents, tools, and the fake demo HTTP server
 from vectros_sdk.examples.tools.custom_tools import (
     DataFormatterTool,
     MathEvaluatorTool,
@@ -48,7 +57,7 @@ from vectros_sdk.examples.agents.archivist_agent import DataArchivistAgent
 from vectros_sdk.examples.agents.coordinator_agent import TaskCoordinatorAgent
 from vectros_sdk.examples.server.mock_kernel_server import (
     AIOSKernelHTTPHandler,
-    LiveAIOSKernelServer,
+    FakeAIOSKernelServer,
     start_kernel_server,
 )
 
@@ -71,18 +80,20 @@ def print_json(title: str, data: Any) -> None:
 
 def run_demonstration(base_url: Optional[str] = None, auto_start_server: bool = True) -> None:
     """
-    Run complete end-to-end multi-agent demonstration using REAL HTTP requests.
+    Run complete end-to-end multi-agent demonstration using real HTTP wire
+    traffic against the FAKE, in-process stand-in kernel (see this module's
+    own docstring) -- not the real AIOS kernel.
 
     Args:
-        base_url: Optional explicit AIOS kernel endpoint URL.
-        auto_start_server: If True, launches a real background HTTP server if base_url is not provided.
+        base_url: Optional explicit fake-kernel endpoint URL.
+        auto_start_server: If True, launches the fake background HTTP server if base_url is not provided.
     """
-    server_instance: Optional[LiveAIOSKernelServer] = None
+    server_instance: Optional[FakeAIOSKernelServer] = None
 
     if base_url is None and auto_start_server:
-        print_banner("0. Starting Real AIOS Kernel HTTP Server on Localhost")
+        print_banner("0. Starting Fake AIOS Kernel HTTP Server on Localhost (Demo Stand-In, Not The Real Kernel)")
         server_instance, base_url = start_kernel_server(host="127.0.0.1", port=0)
-        print(f"-> Live AIOS Kernel HTTP Server running on: {base_url}")
+        print(f"-> Fake AIOS Kernel HTTP Server (demo stand-in) running on: {base_url}")
         print(f"-> Endpoint `/query` ready for real HTTP POST transactions over TCP socket.")
     elif base_url is None:
         base_url = "http://127.0.0.1:8000"

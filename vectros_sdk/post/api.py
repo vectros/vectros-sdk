@@ -42,6 +42,7 @@ def send_post(
     message: Union[str, Dict[str, Any]],
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> PostResponse:
     """
     Send a direct message from one agent to another agent's mailbox.
@@ -58,6 +59,11 @@ def send_post(
 
     Raises:
         AIOSKernelError: If kernel communication fails.
+        RealBackendUnsupported: When `socket_path` names a real, standing
+            kernel server -- Post has no real kernel equivalent at all (the
+            real IPC primitive is point-to-point between two known agents
+            with an existing grant, not this API's shape); see
+            `vectros_sdk.client.real_kernel`.
 
     Example:
         >>> from vectros_sdk.post.api import send_post
@@ -76,7 +82,7 @@ def send_post(
         message=message,
         metadata=metadata,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_post_response(raw_response)
 
 
@@ -85,6 +91,7 @@ def receive_posts(
     limit: int = 10,
     mark_as_read: bool = True,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> PostResponse:
     """
     Fetch pending messages from an agent's inbox/mailbox.
@@ -113,7 +120,7 @@ def receive_posts(
         limit=limit,
         mark_as_read=mark_as_read,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_post_response(raw_response)
 
 
@@ -123,6 +130,7 @@ def broadcast_post(
     topic: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> PostResponse:
     """
     Broadcast a message to all active agents in the system or to an optional topic channel.
@@ -152,7 +160,7 @@ def broadcast_post(
         message=message,
         metadata=metadata,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_post_response(raw_response)
 
 
@@ -162,6 +170,7 @@ def publish_to_topic(
     message: Union[str, Dict[str, Any]],
     metadata: Optional[Dict[str, Any]] = None,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> PostResponse:
     """
     Publish a message to a specific pub/sub topic channel.
@@ -194,7 +203,7 @@ def publish_to_topic(
         message=message,
         metadata=metadata,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_post_response(raw_response)
 
 
@@ -202,6 +211,7 @@ def subscribe_topic(
     agent_name: str,
     topic: str,
     base_url: str = aios_kernel_url,
+    socket_path: Optional[str] = None,
 ) -> PostResponse:
     """
     Subscribe an agent to a pub/sub topic channel to receive published messages.
@@ -227,5 +237,5 @@ def subscribe_topic(
         action_type="subscribe",
         topic=topic,
     )
-    raw_response = send_request(query, base_url=base_url)
+    raw_response = send_request(query, base_url=base_url, socket_path=socket_path)
     return _parse_post_response(raw_response)

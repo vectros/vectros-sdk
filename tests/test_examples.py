@@ -1,6 +1,12 @@
 """
 Test Suite for Example Agents, Custom Tools, and Multi-Agent Demonstration.
-Tests execute REAL HTTP network calls against a live local AIOS Kernel server.
+
+Tests execute real HTTP network calls (real TCP sockets, real HTTP
+requests/responses) against `FakeAIOSKernelServer` -- a self-contained,
+in-process FAKE standing in for the AIOS kernel (see
+`vectros_sdk.examples.server.mock_kernel_server`'s own docstring), not the
+real kernel. For a real sandboxed-kernel proof of these same agents, see
+`test_examples_real_backend.py` (ASBX.16).
 """
 
 import json
@@ -32,7 +38,7 @@ from vectros_sdk.examples.tools.custom_tools import (
 from vectros_sdk.examples.agents.research_agent import ResearchAnalystAgent
 from vectros_sdk.examples.agents.archivist_agent import DataArchivistAgent
 from vectros_sdk.examples.agents.coordinator_agent import TaskCoordinatorAgent
-from vectros_sdk.examples.server.mock_kernel_server import LiveAIOSKernelServer, start_kernel_server
+from vectros_sdk.examples.server.mock_kernel_server import FakeAIOSKernelServer, start_kernel_server
 from vectros_sdk.examples.demo_multi_agent import run_demonstration
 
 
@@ -129,7 +135,7 @@ class TestCustomTools:
 
 
 class TestExampleAgents:
-    """Test concrete example agent implementations using REAL HTTP requests."""
+    """Test concrete example agent implementations using real HTTP requests against the fake demo kernel server."""
 
     @pytest.fixture
     def live_server_url(self) -> str:
@@ -210,7 +216,7 @@ class TestFullDemonstrationRunner:
     def test_run_demonstration(self, capsys: pytest.CaptureFixture) -> None:
         run_demonstration(auto_start_server=True)
         captured = capsys.readouterr()
-        assert "STARTING REAL AIOS KERNEL HTTP SERVER ON LOCALHOST" in captured.out
+        assert "STARTING FAKE AIOS KERNEL HTTP SERVER ON LOCALHOST (DEMO STAND-IN, NOT THE REAL KERNEL)" in captured.out
         assert "INITIALIZING AIOS CLIENT & REGISTERING CUSTOM TOOLS" in captured.out
         assert "PHASE 1: RESEARCH ANALYST AGENT" in captured.out
         assert "PHASE 2: DATA ARCHIVIST AGENT" in captured.out

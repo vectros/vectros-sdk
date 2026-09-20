@@ -84,7 +84,7 @@ class TestBrutalPostAndClientSuite(unittest.TestCase):
     @patch("vectros_sdk.post.api.send_request")
     def test_concurrent_post_operations(self, mock_send_request):
         """Execute 100 concurrent Post operations across worker threads."""
-        def mock_dispatcher(query, base_url=None, timeout=60):
+        def mock_dispatcher(query, base_url=None, timeout=60, socket_path=None):
             return {
                 "response": {
                     "response_class": "post",

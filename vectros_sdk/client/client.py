@@ -474,6 +474,7 @@ class PostClient:
             message=message,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def receive(
@@ -487,6 +488,7 @@ class PostClient:
             limit=limit,
             mark_as_read=mark_as_read,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def broadcast(
@@ -502,6 +504,7 @@ class PostClient:
             topic=topic,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def publish(
@@ -517,6 +520,7 @@ class PostClient:
             message=message,
             metadata=metadata,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
     def subscribe(self, topic: str) -> PostResponse:
@@ -525,6 +529,7 @@ class PostClient:
             agent_name=self._c.agent_name or "default_agent",
             topic=topic,
             base_url=self._c.base_url,
+            socket_path=self._c.socket_path,
         )
 
 

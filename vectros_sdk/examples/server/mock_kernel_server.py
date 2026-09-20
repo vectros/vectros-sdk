@@ -1,9 +1,19 @@
 """
-Lightweight AIOS Kernel HTTP Server for Real Request/Response Demonstration.
+Fake, in-process AIOS Kernel HTTP Server -- an offline demo stand-in, not
+the real kernel.
 
-This server runs a real HTTP server on localhost that handles `/query` POST endpoints,
-maintains state across Memory, Storage, Tools, and Post messaging subsystems, and
-returns real JSON HTTP responses to AIOS-Agent SDK client requests.
+This server runs a real HTTP listener on localhost (the socket/threading is
+real), but everything behind it is a self-contained fake: Memory, Storage,
+Tools, and Post messaging state all live in plain Python dicts in this
+process, never reaching `aios-core`/`aiosd`. It exists so the example
+agents/`demo_multi_agent.py` can be run and read without a live kernel
+process. It must never be described as "real"/"live" AIOS Kernel behavior --
+that is `vectros_sdk.testing.AgentSandbox` plus a real `AIOSClient(socket_path=...)`
+(see `vectros-sdk/tests/test_examples_real_backend.py`, ASBX.16), which
+talks to the real Rust kernel over a real Unix socket, with the real,
+narrower set of capabilities that actually exist there (see that test
+file's own docstring for exactly what does and does not have a real
+equivalent).
 """
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,7 +79,7 @@ class AIOSKernelHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(response_bytes)))
-        self.send_header("Server", "AIOS-Kernel/1.0.0-Live")
+        self.send_header("Server", "AIOS-Kernel-Demo-Mock/1.0.0")
         self.end_headers()
         self.wfile.write(response_bytes)
 
@@ -372,9 +382,11 @@ class AIOSKernelHTTPHandler(BaseHTTPRequestHandler):
         return {"response": {"response_class": "core", "response_message": "Kernel OK", "status_code": 200}}
 
 
-class LiveAIOSKernelServer:
+class FakeAIOSKernelServer:
     """
-    Manages background ThreadingHTTPServer serving live real HTTP requests.
+    Manages a background `ThreadingHTTPServer` -- a real HTTP listener, but
+    serving the fake, in-process `AIOSKernelHTTPHandler` above, not the real
+    kernel. See this module's own docstring.
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 0) -> None:
@@ -404,17 +416,19 @@ class LiveAIOSKernelServer:
             self.server = None
 
 
-def start_kernel_server(host: str = "127.0.0.1", port: int = 8888) -> Tuple[LiveAIOSKernelServer, str]:
+def start_kernel_server(host: str = "127.0.0.1", port: int = 8888) -> Tuple[FakeAIOSKernelServer, str]:
     """
-    Convenience function to launch a live AIOS Kernel HTTP server on localhost.
+    Convenience function to launch the fake, in-process AIOS Kernel HTTP
+    server on localhost -- a demo stand-in, not the real kernel (see this
+    module's own docstring).
 
     Args:
         host: IP host to bind (default: 127.0.0.1).
         port: TCP port to bind (default: 8888, 0 for dynamic).
 
     Returns:
-        Tuple[LiveAIOSKernelServer, str]: Server manager instance and base URL string.
+        Tuple[FakeAIOSKernelServer, str]: Server manager instance and base URL string.
     """
-    srv = LiveAIOSKernelServer(host=host, port=port)
+    srv = FakeAIOSKernelServer(host=host, port=port)
     base_url = srv.start()
     return srv, base_url

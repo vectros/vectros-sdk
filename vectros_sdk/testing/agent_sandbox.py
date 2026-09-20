@@ -198,7 +198,17 @@ class AgentSandbox:
             text=True,
         )
         self._wait_for_socket()
-        self.client = AIOSClient(agent_name=self.agent_name, socket_path=str(self._socket_path))
+        # A caller that named a model already granted model.generate on it
+        # (`_default_grants`) -- wiring it as this client's default routing
+        # too means `client.llm.chat(...)`/`.chat_json(...)` work without
+        # every call site having to repeat `llms=[{"name": model}]` itself,
+        # matching how a real production client is normally configured.
+        default_llms = [{"name": self._model}] if self._model else None
+        self.client = AIOSClient(
+            agent_name=self.agent_name,
+            socket_path=str(self._socket_path),
+            default_llms=default_llms,
+        )
         return self
 
     def _wait_for_socket(self, timeout: float = DEFAULT_SOCKET_WAIT_SECONDS) -> None:
