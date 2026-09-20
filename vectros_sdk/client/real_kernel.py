@@ -99,8 +99,19 @@ from vectros_sdk.transport.execution_protocol import (
 # in LLMQuery today, so this default is a documented limitation, not a
 # silent guess. Headroom (`output_bytes`) must satisfy execution.rs's
 # `max_output_tokens * 16 <= reserved_output_bytes` check.
-_DEFAULT_MAX_OUTPUT_TOKENS = 256
+_DEFAULT_MAX_OUTPUT_TOKENS = 1024
 _DEFAULT_OUTPUT_BYTES = _DEFAULT_MAX_OUTPUT_TOKENS * 16 + 512
+# A real generation up to the full _DEFAULT_MAX_OUTPUT_TOKENS budget
+# (including a "thinking" model spending most of it on internal reasoning
+# before any final content, see llm_backend.rs's own real fallback for that
+# case) has been observed live taking 45+ seconds -- ExecutionProtocolClient
+# .execute()'s own 30_000ms default (this module's other calls are all fast,
+# local, non-generating kernel operations, so that default stays right for
+# them) is not enough headroom for the one call here that can legitimately
+# run long. Matches OllamaConfig::DEFAULT_TIMEOUT (llm_backend.rs) so the
+# client-side poll budget is never shorter than what the server's own real
+# network call to Ollama is itself allowed to take.
+_GENERATION_DEADLINE_MS = 120_000
 _DEFAULT_WINDOW_BYTES = _DEFAULT_OUTPUT_BYTES * 4
 
 # Tracks each agent's context revision (and, separately, its one storage
@@ -394,6 +405,7 @@ def _llm(query: Any, client: ExecutionProtocolClient) -> Dict[str, Any]:
     generate_value = client.execute(
         _new_id("req_gen"),
         model_generate(prepare_id, model, input_bytes, _DEFAULT_MAX_OUTPUT_TOKENS),
+        deadline_ms=_GENERATION_DEADLINE_MS,
     )
     generated = generate_value["Generated"]
     return {
