@@ -23,6 +23,9 @@ dev = [
     "pytest-mock>=3.10.0"
 ]
 
+[project.entry-points.pytest11]
+aios_agent_sandbox = "vectros_sdk.testing.pytest_plugin"
+
 [project.scripts]
 aios-terminal = "vectros_sdk.terminal.repl:main"
 list-toolhub-tools = "vectros_sdk.commands.list_toolhub:main"
