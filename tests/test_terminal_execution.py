@@ -4,7 +4,7 @@ and declining must mean nothing runs at all."""
 
 import unittest
 
-from vectros_sdk.terminal.execution import is_destructive, run_command
+from vectros_sdk.terminal.execution import is_destructive, is_interactive, run_command
 
 
 class TestDestructiveDetection(unittest.TestCase):
@@ -19,6 +19,41 @@ class TestDestructiveDetection(unittest.TestCase):
 
     def test_empty_line_is_not_destructive(self):
         self.assertFalse(is_destructive(""))
+
+
+class TestInteractiveDetection(unittest.TestCase):
+    """TERM.7: the narrow, disclosed heuristic named in
+    `INTERACTIVE_PROGRAMS`'s own doc comment."""
+
+    def test_vim_is_interactive(self):
+        self.assertTrue(is_interactive("vim notes.txt"))
+
+    def test_a_plain_read_only_command_is_not_interactive(self):
+        self.assertFalse(is_interactive("ls -la"))
+
+    def test_a_full_path_still_matches_by_basename(self):
+        self.assertTrue(is_interactive("/usr/bin/vim notes.txt"))
+
+    def test_an_unlisted_program_is_not_interactive(self):
+        # A real, honest limitation: not on the fixed list, so it takes the
+        # plain path -- correct for the overwhelming majority of commands,
+        # but not a general interactive-program detector.
+        self.assertFalse(is_interactive("my-custom-repl"))
+
+    def test_empty_line_is_not_interactive(self):
+        self.assertFalse(is_interactive(""))
+
+
+class TestRunCommandWithoutARealTerminal(unittest.TestCase):
+    """`_run_with_terminal_control` refuses job control without a real
+    controlling terminal on stdin (there is none under a test runner) and
+    falls back to the plain path -- `run_command` must still work correctly
+    for a command `is_interactive` matches in that case."""
+
+    def test_an_interactive_command_still_runs_and_reports_its_real_exit_code(self):
+        result = run_command("python3 -c 'import sys; sys.exit(3)'")
+        self.assertTrue(result.ran)
+        self.assertEqual(result.exit_code, 3)
 
 
 class TestRunCommandConfirmation(unittest.TestCase):
