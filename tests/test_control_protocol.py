@@ -161,27 +161,34 @@ class TestControlProtocol(unittest.TestCase):
         self.assertTrue(any(a["agent_id"] == self.agent_id for a in agents))
 
         with self.assertRaises(ControlProtocolError):
-            client.control.terminate_run(self.run_id)  # confirm defaults to False
+            client.control.terminate_run(self.run_id, reason="test")  # confirm defaults to False
 
     def test_04_suspend_and_resume_run_really_change_the_live_lifecycle(self) -> None:
         client = self.client()
-        suspended = client.suspend_run(self.run_id)
+        suspended = client.suspend_run(self.run_id, reason="sdk suspend test")
         self.assertEqual(suspended["state"], "Quiescing")
         self.assertEqual(client.describe_run(self.run_id)["state"], "Quiescing")
 
-        resumed = client.resume_run(self.run_id)
+        resumed = client.resume_run(self.run_id, reason="sdk resume test")
         self.assertEqual(resumed["state"], "Running")
+        self.assertEqual(client.describe_run(self.run_id)["state"], "Running")
+
+    def test_04b_an_empty_reason_is_refused_by_the_server(self) -> None:
+        # Not a client-side check: the SDK sends it, the real server refuses.
+        client = self.client()
+        with self.assertRaises(ControlProtocolError):
+            client.suspend_run(self.run_id, reason="   ")
         self.assertEqual(client.describe_run(self.run_id)["state"], "Running")
 
     def test_05_terminate_agent_refuses_without_confirm_and_really_terminates_with_it(self) -> None:
         client = self.client()
         with self.assertRaises(ControlProtocolError):
-            client.terminate_agent(self.agent_id, confirm=False)
+            client.terminate_agent(self.agent_id, reason="sdk test", confirm=False)
 
         # Confirm the agent is still real and untouched by the refused call.
         self.assertEqual(client.describe_agent(self.agent_id)["state"], "Ready")
 
-        outcome = client.terminate_agent(self.agent_id, confirm=True)
+        outcome = client.terminate_agent(self.agent_id, reason="sdk terminate test", confirm=True)
         self.assertIn(outcome["final_state"], ("Terminated", "Failed"))
         self.assertTrue(outcome["fully_clean"])
         self.assertTrue(outcome["run_also_terminated"])

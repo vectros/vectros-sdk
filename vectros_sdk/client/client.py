@@ -608,33 +608,34 @@ class ControlClient:
         """Every request the dispatcher currently tracks, regardless of owner."""
         return self._connect().list_requests()
 
-    def cancel_request(self, request_id: str) -> str:
+    def cancel_request(self, request_id: str, *, reason: str) -> str:
         """Cancels one tracked request. Real and immediate if queued; only a
         cooperative signal if already dispatched (this server runs each
         request synchronously to completion — see the Rust server's own
         `SystemCallDispatcher::cancel_any` doc comment)."""
-        return self._connect().cancel_request(request_id)
+        return self._connect().cancel_request(request_id, reason=reason)
 
-    def suspend_run(self, run_id: str) -> Dict[str, Any]:
-        """Pauses a Run (`Running` -> `Quiescing`)."""
-        return self._connect().suspend_run(run_id)
+    def suspend_run(self, run_id: str, *, reason: str) -> Dict[str, Any]:
+        """Pauses a Run (`Running` -> `Quiescing`). `reason` is required,
+        server-enforced, and durably audited."""
+        return self._connect().suspend_run(run_id, reason=reason)
 
-    def resume_run(self, run_id: str) -> Dict[str, Any]:
+    def resume_run(self, run_id: str, *, reason: str) -> Dict[str, Any]:
         """Resumes a Run paused by `suspend_run`."""
-        return self._connect().resume_run(run_id)
+        return self._connect().resume_run(run_id, reason=reason)
 
-    def terminate_run(self, run_id: str, *, confirm: bool = False) -> Dict[str, Any]:
+    def terminate_run(self, run_id: str, *, reason: str, confirm: bool = False) -> Dict[str, Any]:
         """Terminates a Run for real: drains its tracked requests and moves
         its lifecycle to a terminal state. Requires `confirm=True` — a real
         kill button is a foot-gun (plan.md's own Phase 22 note)."""
-        return self._connect().terminate_run(run_id, confirm=confirm)
+        return self._connect().terminate_run(run_id, reason=reason, confirm=confirm)
 
-    def terminate_agent(self, agent_id: str, *, confirm: bool = False) -> Dict[str, Any]:
+    def terminate_agent(self, agent_id: str, *, reason: str, confirm: bool = False) -> Dict[str, Any]:
         """Terminates an Agent for real: drains its requests, revokes every
         grant on a resource it owns, disowns every ownership record, and
         (single-tenant) also terminates the Run it owns. Requires
         `confirm=True`."""
-        return self._connect().terminate_agent(agent_id, confirm=confirm)
+        return self._connect().terminate_agent(agent_id, reason=reason, confirm=confirm)
 
     def list_pending_approvals(self) -> List[Dict[str, Any]]:
         """Every ToolInvoke call currently held pending review (CTL.10,

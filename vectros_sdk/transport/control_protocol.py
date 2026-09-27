@@ -22,7 +22,7 @@ Example
 -------
 >>> with ControlProtocolClient("/tmp/aios.sock.control") as client:
 ...     client.list_agents()
-...     client.terminate_agent("agent_default", confirm=True)
+...     client.terminate_agent("agent_default", reason="retiring this agent", confirm=True)
 """
 
 from __future__ import annotations
@@ -136,32 +136,48 @@ class ControlProtocolClient:
     # `aiosctl control terminate-*`'s own `--yes` requirement rather than
     # letting a bare method call silently do something irreversible.
 
-    def cancel_request(self, request_id: str) -> str:
+    # Every Tier 2 verb carries a required, server-enforced ``reason`` that is
+    # durably audited (CTL.8/CTL.9 amendment). An empty or whitespace-only
+    # reason is refused by the server itself, not just here.
+
+    def cancel_request(self, request_id: str, *, reason: str) -> str:
         """Returns the request's status afterward (``"Cancelled"`` for a
         queued request; still ``"Dispatched"`` for a cooperative-only signal
         on an already-dispatched one — see the Rust server's own doc
         comment on `SystemCallDispatcher::cancel_any` for exactly why)."""
-        return _unwrap(self._call({"CancelRequest": request_id}), "RequestCancelled")
+        return _unwrap(
+            self._call({"CancelRequest": {"request": request_id, "reason": reason}}),
+            "RequestCancelled",
+        )
 
-    def suspend_run(self, run_id: str) -> Dict[str, Any]:
-        return _unwrap(self._call({"SuspendRun": run_id}), "RunSuspended")
+    def suspend_run(self, run_id: str, *, reason: str) -> Dict[str, Any]:
+        return _unwrap(
+            self._call({"SuspendRun": {"run": run_id, "reason": reason}}), "RunSuspended"
+        )
 
-    def resume_run(self, run_id: str) -> Dict[str, Any]:
-        return _unwrap(self._call({"ResumeRun": run_id}), "RunResumed")
+    def resume_run(self, run_id: str, *, reason: str) -> Dict[str, Any]:
+        return _unwrap(
+            self._call({"ResumeRun": {"run": run_id, "reason": reason}}), "RunResumed"
+        )
 
-    def terminate_run(self, run_id: str, *, confirm: bool) -> Dict[str, Any]:
+    def terminate_run(self, run_id: str, *, reason: str, confirm: bool) -> Dict[str, Any]:
         if not confirm:
             raise ControlProtocolError(
                 "refusing to terminate a run without confirm=True"
             )
-        return _unwrap(self._call({"TerminateRun": run_id}), "RunTerminated")
+        return _unwrap(
+            self._call({"TerminateRun": {"run": run_id, "reason": reason}}), "RunTerminated"
+        )
 
-    def terminate_agent(self, agent_id: str, *, confirm: bool) -> Dict[str, Any]:
+    def terminate_agent(self, agent_id: str, *, reason: str, confirm: bool) -> Dict[str, Any]:
         if not confirm:
             raise ControlProtocolError(
                 "refusing to terminate an agent without confirm=True"
             )
-        return _unwrap(self._call({"TerminateAgent": agent_id}), "AgentTerminated")
+        return _unwrap(
+            self._call({"TerminateAgent": {"agent": agent_id, "reason": reason}}),
+            "AgentTerminated",
+        )
 
     # --- Tier 3: tool-call approval (operator.approve, CTL.10) --------------
     #

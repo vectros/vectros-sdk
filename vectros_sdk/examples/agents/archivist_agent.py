@@ -156,3 +156,21 @@ class DataArchivistAgent(BaseAgent):
         log["operations"]["topic_publish"] = pub_resp.get("response_message", f"Published to {topic}")
 
         return log
+
+    def archive_summary(self, file_path: str, content: str) -> Dict[str, Any]:
+        """Archive one summary using only operations the real kernel backs.
+
+        VAL.10: `setup_project_storage` needs mounts, directories, content
+        search, version rollback, sharing, and pub/sub — none of which the
+        real flat (collection, object) Storage Manager has. This is the
+        real-capable subset: create and write the agent's one real storage
+        object. Every call goes through the kernel's real admission path.
+        """
+        created = self.client.storage.create_file(file_path=file_path)
+        written = self.client.storage.write_file(file_path=file_path, content=content)
+        return {
+            "agent": self.name,
+            "file_path": file_path,
+            "created": bool(getattr(created, "finished", False)),
+            "written": bool(getattr(written, "finished", False)),
+        }

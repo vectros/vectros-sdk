@@ -183,3 +183,31 @@ class TaskCoordinatorAgent(BaseAgent):
         })
 
         return execution_log
+
+    def plan_and_record(self, mission: str) -> Dict[str, Any]:
+        """Plan a mission and record the plan, using only real primitives.
+
+        VAL.10: `orchestrate_pipeline` is built entirely on the Post pub/sub
+        API, which has no real kernel equivalent (the real IPC primitive is
+        point-to-point between two known agents with an existing grant).
+        This is the coordinator's real-capable subset: one real model call
+        to plan, and the plan persisted to (and read back from) the agent's
+        one real memory slot.
+        """
+        plan = self.client.llm.chat(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": f"In one short sentence, plan this mission: {mission}"},
+            ]
+        )
+        plan_text = getattr(plan, "response_message", None) or str(plan)
+        saved = self.client.memory.create(content=plan_text, metadata={"mission": mission})
+        memory_id = saved.get("memory_id")
+        readback = self.client.memory.get(memory_id) if memory_id else None
+        return {
+            "agent": self.name,
+            "mission": mission,
+            "plan": plan_text,
+            "saved_memory_id": memory_id,
+            "recalled": (readback or {}).get("content"),
+        }
