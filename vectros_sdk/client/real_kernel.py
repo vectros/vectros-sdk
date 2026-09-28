@@ -32,11 +32,10 @@ never a silent mock fallback for a real-looking call:
   `subscribe`) — the kernel's real primitive is `IpcSend`/`IpcReceive`
   between two *known* agents with an existing grant, not topic-based
   pub/sub. There is no translation, not even a partial one.
-- Tool calls for anything except the one pre-registered fixture tool
-  (`res_tool_uppercase_<agent>`, an uppercase text transform) — the
-  kernel's `ToolEntrypoint` is a closed set of reviewed fixtures, not a
-  bring-your-own-Python-callable registry like the SDK's client-side tool
-  registry (`vectros_sdk.tool.core.registry`).
+- Tool calls for anything outside the registered closed set: `uppercase`
+  is always available; workspace-scoped `pwd` and `list_dir` are available
+  only when the operator starts the server with `AIOS_FIXTURE_WORKSPACE`.
+  This is not a bring-your-own-Python-callable registry.
 
 Conversation model for `llm_chat` (a real, recorded design decision, not an
 oversight): the real kernel has no "stateless, full-history-per-call"
@@ -44,12 +43,23 @@ primitive — a `Context` is a server-side object with its own revision
 counter, and creating one twice is a `Duplicate` error. Recreating a fresh
 context per call would need a fresh granted resource per call, which the
 current single-tenant bootstrap does not (and should not, for a fixed grant
-set) support. So: **one persistent context per agent for the process
-lifetime; each call appends only the newest message** (`messages[-1]`) and
-generates against the accumulated conversation. Earlier entries in the
-caller's `messages` list are assumed to already be part of that accumulated
-context from prior calls — passing a full OpenAI-style growing history every
-call will duplicate earlier turns. This is documented here, not hidden.
+set) support. So there is **one persistent, append-only context per agent
+for the process lifetime**, and this module keeps a copy of what it holds:
+
+- Each call appends only the part of `messages` the context does not
+  already hold (`messages_to_append`). A caller passing a full OpenAI-style
+  growing history (system, user, assistant, user, ...) appends just the new
+  turn, even when the context also holds an earlier conversation; a caller
+  passing its system prompt plus only the newest message, or only the
+  newest message, appends that message. The first call appends everything,
+  including the system prompt.
+- After a generation, the model's reply is appended as an `Assistant`
+  message, because the kernel does not add it by itself. Without this the
+  next turn would not see the reply.
+- Messages are compared by role and stripped text, so a caller that
+  re-sends the reply with surrounding whitespace removed does not add it
+  twice. The context is append-only: a caller that rewrites an earlier
+  message cannot remove the old one; the rewritten tail is appended.
 
 One-fixed-resource-per-agent applies to Memory and Storage too (a real,
 confirmed constraint of `kernel_server.rs::tenant_permissions`, not
@@ -79,7 +89,7 @@ collection itself uses. Concretely:
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from vectros_sdk.core.models import Query
 from vectros_sdk.transport.execution_protocol import (
@@ -120,12 +130,15 @@ _DEFAULT_WINDOW_BYTES = _DEFAULT_OUTPUT_BYTES * 4
 # limitation of the current single-tenant bootstrap, not a bug in this
 # module.
 _context_revisions: Dict[str, int] = {}
+# What each agent's context holds, as (role, stripped text) pairs, so a
+# call appends only what the context does not already contain.
+_context_histories: Dict[str, List[Tuple[str, str]]] = {}
 _storage_versions: Dict[str, int] = {}
 
-# Friendly tool name -> the fixture tool `kernel_server.rs` registers.
+# Friendly tool names -> fixed resources `kernel_server.rs` can register.
 # Extend this only when a new real tool is actually registered server-side;
 # never invent a mapping the server does not back.
-_KNOWN_TOOLS = {"uppercase"}
+_KNOWN_TOOLS = {"uppercase", "pwd", "list_dir"}
 
 
 class RealBackendUnsupported(Exception):
@@ -338,14 +351,25 @@ def _tool(query: Any, client: ExecutionProtocolClient) -> Dict[str, Any]:
             "not a bring-your-own-callable registry)."
         )
     parameters = call.get("parameters", {})
-    input_text = parameters.get("input")
-    if input_text is None:
-        raise RealBackendUnsupported("the 'uppercase' tool requires parameters={'input': str}")
-
-    tool_resource = uppercase_tool_resource_id(suffix)
-    value = client.execute(
-        _new_id("req_tool"), tool_invoke(tool_resource, {"input": str(input_text)})
-    )
+    if not isinstance(parameters, dict):
+        raise RealBackendUnsupported("tool parameters must be an object")
+    if name == "uppercase":
+        input_text = parameters.get("input")
+        if not isinstance(input_text, str) or set(parameters) != {"input"}:
+            raise RealBackendUnsupported("uppercase requires parameters={'input': str}")
+        tool_resource = uppercase_tool_resource_id(suffix)
+        arguments = {"input": input_text}
+    elif name == "pwd":
+        if parameters:
+            raise RealBackendUnsupported("pwd accepts no parameters")
+        tool_resource = f"res_tool_pwd_{suffix}"
+        arguments = {}
+    else:
+        if set(parameters) - {"path"} or not isinstance(parameters.get("path", "."), str):
+            raise RealBackendUnsupported("list_dir accepts only an optional string path")
+        tool_resource = f"res_tool_list_dir_{suffix}"
+        arguments = {"path": parameters.get("path", ".")}
+    value = client.execute(_new_id("req_tool"), tool_invoke(tool_resource, arguments))
     result_pairs = value.get("ToolResult", [])
     output = next((v.get("String") for k, v in result_pairs if k == "output"), None)
     return {"finished": True, "response_message": output}
@@ -381,23 +405,22 @@ def _llm(query: Any, client: ExecutionProtocolClient) -> Dict[str, Any]:
     if suffix not in _context_revisions:
         client.execute(_new_id("req_ctx_create"), context_create(context_id))
         _context_revisions[suffix] = 0
-    revision = _context_revisions[suffix]
+        _context_histories[suffix] = []
 
-    last_message = query.messages[-1]
-    role = str(last_message.get("role", "user")).capitalize()
-    text = str(last_message.get("content", ""))
-    append_value = client.execute(
-        _new_id("req_ctx_append"), context_append(context_id, revision, role, text)
-    )
-    new_revision = append_value["Revision"]
-    _context_revisions[suffix] = new_revision
+    history = _context_histories[suffix]
+    for message in messages_to_append(history, query.messages):
+        _append_message(client, suffix, context_id, message)
 
     model = model_resource_id(query.llms[0]["name"])
     prepare_id = _new_id("req_ctx_prepare")
     prepare_value = client.execute(
         prepare_id,
         context_prepare(
-            context_id, new_revision, model, _DEFAULT_OUTPUT_BYTES, _DEFAULT_WINDOW_BYTES
+            context_id,
+            _context_revisions[suffix],
+            model,
+            _DEFAULT_OUTPUT_BYTES,
+            _DEFAULT_WINDOW_BYTES,
         ),
     )
     input_bytes = prepare_value["Prepared"]["input_bytes"]
@@ -408,8 +431,55 @@ def _llm(query: Any, client: ExecutionProtocolClient) -> Dict[str, Any]:
         deadline_ms=_GENERATION_DEADLINE_MS,
     )
     generated = generate_value["Generated"]
+    reply = "".join(generated["tokens"])
+    # The kernel does not record the reply in the context; do it here so the
+    # next turn sees it.
+    _append_message(client, suffix, context_id, {"role": "assistant", "content": reply})
     return {
-        "response_message": "".join(generated["tokens"]),
+        "response_message": reply,
         "tool_calls": None,
         "finished": True,
     }
+
+
+def _message_key(message: Dict[str, Any]) -> Tuple[str, str]:
+    return (str(message.get("role", "user")).lower(), str(message.get("content", "")).strip())
+
+
+def messages_to_append(
+    history: List[Tuple[str, str]], messages: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """The part of `messages` the context does not already hold.
+
+    Pure: `history` is the (role, stripped text) record of what the context
+    holds. Skips the longer of (a) the longest run of leading `messages`
+    that equals the end of `history` (a growing history continuing the
+    latest turns) and (b) the longest common prefix with `history` (the same
+    system prompt followed by only the newest message). See the module
+    docstring's conversation model.
+    """
+    keys = [_message_key(m) for m in messages]
+    overlap = next(
+        (k for k in range(min(len(history), len(keys)), 0, -1) if keys[:k] == history[-k:]),
+        0,
+    )
+    prefix = 0
+    for held, key in zip(history, keys):
+        if held != key:
+            break
+        prefix += 1
+    return list(messages[max(overlap, prefix):])
+
+
+def _append_message(
+    client: ExecutionProtocolClient, suffix: str, context_id: str, message: Dict[str, Any]
+) -> None:
+    role = str(message.get("role", "user")).capitalize()
+    text = str(message.get("content", ""))
+    tool_call_id = message.get("tool_call_id")
+    value = client.execute(
+        _new_id("req_ctx_append"),
+        context_append(context_id, _context_revisions[suffix], role, text, tool_call_id),
+    )
+    _context_revisions[suffix] = value["Revision"]
+    _context_histories[suffix].append(_message_key(message))
