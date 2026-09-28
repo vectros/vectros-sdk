@@ -250,10 +250,8 @@ def storage_delete(collection: str, obj: str, expected_version: int = 0) -> Dict
 
 
 def tool_invoke(tool: str, arguments: Dict[str, str]) -> Dict[str, Any]:
-    """``arguments`` values are always strings — the one registered fixture
-    tool (`DeterministicTextTransformV1`) only accepts a string `input`
-    field. `ToolValues` serializes as a list of `[name, {"String": value}]`
-    pairs, not a plain dict — verified against the Rust side's own output.
+    """``arguments`` values are strings for the closed SDK tool set.
+    `ToolValues` serializes as `[name, {"String": value}]` pairs, not a dict.
     """
     return {
         "ToolInvoke": {

@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from vectros_sdk.client.client import AIOSClient  # noqa: E402
+from vectros_sdk.client import real_kernel  # noqa: E402
 from vectros_sdk.client.real_kernel import RealBackendUnsupported  # noqa: E402
 from vectros_sdk.memory.api import (  # noqa: E402
     MemoryFeatureUnimplemented,
@@ -33,6 +34,11 @@ from vectros_sdk.memory.api import (  # noqa: E402
 )
 from vectros_sdk.storage.api import create_file, write_file  # noqa: E402
 from vectros_sdk.tool.api import call_tool  # noqa: E402
+from vectros_sdk.transport.execution_protocol import (  # noqa: E402
+    ExecutionProtocolClient,
+    ExecutionProtocolError,
+    context_prepare,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1].parent
 CARGO_AVAILABLE = shutil.which("cargo") is not None
@@ -202,6 +208,42 @@ class TestRealKernelClient(unittest.TestCase):
         self.assertTrue(response.finished)
         print(f"real end-to-end llm.chat via AIOSClient(socket_path=...): {response.response_message!r}")
         self.assertTrue(response.response_message)
+
+    def test_llm_chat_records_system_prompt_and_replies_in_the_context(self) -> None:
+        # The kernel does not add a generation to the context by itself, and
+        # an earlier llm_chat appended only messages[-1]: the system prompt and
+        # every model reply were silently dropped. Prove against the real
+        # server that each call now appends exactly the new messages plus the
+        # reply, by checking the revision the server accepts afterwards.
+        suffix = self._agent_suffix()
+        client = AIOSClient(agent_name=suffix, socket_path=str(self.socket_path))
+        llms = [{"name": OLLAMA_MODEL}]
+        start = real_kernel._context_revisions.get(suffix, 0)
+        system = {"role": "system", "content": "Answer with one word."}
+        user_1 = {"role": "user", "content": "Say the word APPLE."}
+
+        reply_1 = client.llm.chat(messages=[system, user_1], llms=llms).response_message
+        # system + user + assistant reply
+        self.assertEqual(real_kernel._context_revisions[suffix], start + 3)
+
+        user_2 = {"role": "user", "content": "Say it again."}
+        client.llm.chat(
+            messages=[system, user_1, {"role": "assistant", "content": reply_1.strip()}, user_2],
+            llms=llms,
+        )
+        # only user_2 + the new reply: the resent history is not duplicated
+        self.assertEqual(real_kernel._context_revisions[suffix], start + 5)
+
+        # The server agrees: a prepare at that revision is accepted, one past it is not.
+        revision = real_kernel._context_revisions[suffix]
+        context = f"context_context_{suffix}"
+        model = real_kernel.model_resource_id(OLLAMA_MODEL)
+        with ExecutionProtocolClient(str(self.socket_path)) as raw:
+            raw.execute(f"req_sync_ok_{os.getpid()}", context_prepare(context, revision, model, 1024, 4096))
+            with self.assertRaises(ExecutionProtocolError):
+                raw.execute(
+                    f"req_sync_ahead_{os.getpid()}", context_prepare(context, revision + 1, model, 1024, 4096)
+                )
 
     def test_llm_tool_use_has_no_real_equivalent_yet_and_is_refused_not_faked(self) -> None:
         client = AIOSClient(agent_name=self._agent_suffix(), socket_path=str(self.socket_path))
