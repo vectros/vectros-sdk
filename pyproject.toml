@@ -22,4 +22,5 @@ include = ["vectros*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["kernel: needs a loaded aios.ko, libaios.so and running workers"]
