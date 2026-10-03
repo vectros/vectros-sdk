@@ -15,6 +15,7 @@ import json
 import os
 import struct
 import time
+import warnings
 from pathlib import Path
 from typing import Callable, Generator
 
@@ -108,6 +109,14 @@ class Kernel:
         # span to finish when the syscall is waited for.
         self._inflight: dict[int, tuple[object, TraceSpan | None]] = {}
         self.abi_minor = self._abi_minor()
+        missing = [name for name in ("aios_register_agent_ex", "aios_client_tool_complete")
+                   if not hasattr(self.lib, name)]
+        if self.abi_minor >= 3 and missing:
+            warnings.warn(
+                f"{path} predates the loaded kernel (ABI 4.{self.abi_minor}): missing "
+                f"{', '.join(missing)}. Agent IDs are random and @tool calls bypass the "
+                "kernel. Install the current libaios.so or set VECTROS_LIBAIOS.",
+                RuntimeWarning, stacklevel=3)
 
     def _abi_minor(self) -> int:
         info = bytearray(8)

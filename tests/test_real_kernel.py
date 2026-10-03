@@ -10,6 +10,8 @@ pytestmark = [
     pytest.mark.kernel,
     pytest.mark.skipif(not os.path.exists("/dev/aios") or not os.environ.get("VECTROS_E2E"),
                        reason="set VECTROS_E2E=1 with aios.ko loaded and workers running"),
+    # A stale libaios.so silently disables 4.3 features; fail loudly instead.
+    pytest.mark.filterwarnings("error:.*predates the loaded kernel"),
 ]
 
 

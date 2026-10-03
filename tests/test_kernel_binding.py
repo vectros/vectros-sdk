@@ -94,3 +94,15 @@ def test_tool_payload_validates_name():
         k._tool_payload("x" * 64, {}, 0)
     payload = k._tool_payload("add", {"a": 1}, k.TOOL_CALL_CLIENT)
     assert len(payload) == 88 + len(b'{"a":1}')
+
+
+def test_warns_when_library_is_older_than_kernel(monkeypatch):
+    class OldLib:
+        def aios_open(self):
+            return 1
+
+    monkeypatch.setattr(k.ctypes, "CDLL", lambda path, use_errno: OldLib())
+    monkeypatch.setattr(k.Kernel, "_bind", lambda self: None)
+    monkeypatch.setattr(k.Kernel, "_abi_minor", lambda self: 3)
+    with pytest.warns(RuntimeWarning, match="predates the loaded kernel"):
+        k.Kernel("/usr/lib64/libaios.so")
