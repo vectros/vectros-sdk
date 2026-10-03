@@ -34,7 +34,7 @@ def test_plain_chat_streams_tokens_and_registers_lazily(fake):
 def test_tool_loop_runs_local_tool_then_answers(fake):
     kernel = fake(replies=[{"tool": "add", "args": {"a": 2.5, "b": 4}},
                            'Sure: {"answer": "6.5"}'])
-    agent = Agent("calc", tools=[add], system="Be exact.", kernel=kernel)
+    agent = Agent("calc", tools=[add], system="Be exact.", tool_protocol="json", kernel=kernel)
     assert agent.run("2.5 + 4?") == "6.5"
     first = kernel.llm_calls[0]
     assert first["json_mode"] is True
@@ -51,7 +51,7 @@ def test_tool_errors_and_unknown_tools_go_back_to_model(fake):
         raise RuntimeError("disk on fire")
 
     kernel = fake(replies=[{"tool": "boom"}, {"tool": "nope", "args": {}}, {"answer": "gave up"}])
-    agent = Agent("t", tools=[boom], kernel=kernel)
+    agent = Agent("t", tools=[boom], tool_protocol="json", kernel=kernel)
     results = [e.data["result"] for e in agent.stream("go") if e.kind == "tool_result"]
     assert results[0] == "error: RuntimeError: disk on fire"
     assert results[1].startswith("error: unknown tool 'nope'")
@@ -59,15 +59,15 @@ def test_tool_errors_and_unknown_tools_go_back_to_model(fake):
 
 def test_approval_tool_denied_without_approver(fake):
     kernel = fake(replies=[{"tool": "delete_all", "args": {}}, {"answer": "ok"}])
-    agent = Agent("t", tools=[delete_all], kernel=kernel)
+    agent = Agent("t", tools=[delete_all], tool_protocol="json", kernel=kernel)
     results = [e.data["result"] for e in agent.stream("clean") if e.kind == "tool_result"]
-    assert results == ["denied: approval required"]
+    assert results == ["denied: denied or cancelled by the owner"]
 
 
 def test_approval_tool_runs_when_approved(fake):
     seen = []
     kernel = fake(replies=[{"tool": "delete_all", "args": {}}, {"answer": "ok"}])
-    agent = Agent("t", tools=[delete_all], kernel=kernel,
+    agent = Agent("t", tools=[delete_all], kernel=kernel, tool_protocol="json",
                   approve=lambda name, args: seen.append(name) or True)
     results = [e.data["result"] for e in agent.stream("clean") if e.kind == "tool_result"]
     assert results == ["deleted"] and seen == ["delete_all"]
@@ -79,7 +79,7 @@ def test_kernel_tools_resolve_from_registry(fake):
                             "properties": {"q": {"type": "string"}}}}]
     kernel = fake(replies=[{"tool": "search_web", "args": {"q": "linux"}}, {"answer": "6.x"}],
                   registry=registry, tool_results={"search_web": "Linux 6.x"})
-    agent = Agent("r", tools=["search_web", add], kernel=kernel)
+    agent = Agent("r", tools=["search_web", add], tool_protocol="json", kernel=kernel)
     assert agent.run("latest?") == "6.x"
     assert kernel.tool_calls == [("search_web", {"q": "linux"})]
     assert (SYSCALL_TOOL, "") in kernel.cores
@@ -103,7 +103,7 @@ def test_plain_function_is_rejected(fake):
 def test_step_limit(fake):
     kernel = fake(replies=[{"tool": "add", "args": {"a": 1, "b": 1}}] * 2)
     with pytest.raises(StepLimitReached):
-        Agent("t", tools=[add], max_steps=2, kernel=kernel).run("loop")
+        Agent("t", tools=[add], max_steps=2, tool_protocol="json", kernel=kernel).run("loop")
 
 
 def test_session_persists_across_agents(fake, state_home):
@@ -141,3 +141,61 @@ def test_close_unregisters(fake):
         agent.run("x")
         agent_id = agent.id
     assert kernel.unregistered == [agent_id]
+
+
+def envelope(content="", calls=()):
+    return {"aios_llm_result": 1, "content": content, "tool_calls": [
+        {"id": f"c{i}", "type": "function",
+         "function": {"name": name, "arguments": json.dumps(args)}}
+        for i, (name, args) in enumerate(calls)]}
+
+
+def test_native_tool_calls_run_through_kernel_and_feed_back(fake):
+    kernel = fake(replies=[envelope("Let me add.", [("add", {"a": 2, "b": 3}), ("add", {"a": 1, "b": 1})]),
+                           envelope("The sums are 5 and 2.")])
+    agent = Agent("calc", tools=[add], system="Be exact.", kernel=kernel)
+    events = list(agent.stream("2+3 and 1+1?"))
+    assert events[-1].data == "The sums are 5 and 2."
+    first = kernel.llm_calls[0]
+    assert first["json_mode"] is False
+    assert first["tools"] == [{"type": "function", "function": {
+        "name": "add", "description": "Add two numbers.", "parameters": add.parameters}}]
+    assert first["messages"][0] == {"role": "system", "content": "Be exact."}
+    followup = kernel.llm_calls[1]["messages"]
+    assert followup[-3]["role"] == "assistant" and len(followup[-3]["tool_calls"]) == 2
+    assert followup[-2:] == [{"role": "tool", "tool_call_id": "c0", "content": "5"},
+                             {"role": "tool", "tool_call_id": "c1", "content": "2"}]
+    assert kernel.client_calls == [("add", {"a": 2, "b": 3}, False), ("add", {"a": 1, "b": 1}, False)]
+    assert "".join(e.data for e in events if e.kind == "token").startswith("Let me add.")
+
+
+def test_native_plain_text_reply_is_the_answer(fake):
+    kernel = fake(replies=["No tools needed."])
+    assert Agent("t", tools=[add], kernel=kernel).run("hi") == "No tools needed."
+
+
+def test_native_bad_arguments_are_reported(fake):
+    bad = {"aios_llm_result": 1, "content": "", "tool_calls": [
+        {"id": "x", "function": {"name": "add", "arguments": "{not json"}}]}
+    kernel = fake(replies=[bad, envelope("sorry")])
+    agent = Agent("t", tools=[add], kernel=kernel)
+    results = [e.data["result"] for e in agent.stream("go") if e.kind == "tool_result"]
+    assert results == ["error: arguments must be a JSON object"]
+
+
+def test_local_tools_fall_back_in_process_on_old_kernels(fake):
+    kernel = fake(replies=[envelope("", [("delete_all", {})]), envelope("done")], client_tools=False)
+    agent = Agent("t", tools=[delete_all], kernel=kernel)
+    results = [e.data["result"] for e in agent.stream("go") if e.kind == "tool_result"]
+    assert results == ["denied: approval required"] and kernel.client_calls == []
+
+
+def test_any_tool_sets_up_tool_core(fake):
+    kernel = fake(replies=["x"])
+    Agent("t", tools=[add], kernel=kernel).run("x")
+    assert (SYSCALL_TOOL, "") in kernel.cores
+
+
+def test_invalid_tool_protocol(fake):
+    with pytest.raises(ValueError):
+        Agent("t", tool_protocol="xml", kernel=fake())

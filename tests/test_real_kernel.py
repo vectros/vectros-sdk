@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from vectros import Agent, tool
+from vectros import Agent, VectrosError, tool
 
 pytestmark = [
     pytest.mark.kernel,
@@ -32,3 +32,32 @@ def test_storage_round_trip():
     with Agent("e2e-storage") as agent:
         agent.storage.write("note.txt", "hello")
         assert agent.storage.read("note.txt") == b"hello"
+
+
+def test_stable_identity_is_exclusive_and_restart_safe():
+    with Agent("e2e-identity") as first:
+        agent_id = first.id
+        with pytest.raises(VectrosError, match="already running"):
+            Agent("e2e-identity").id
+    with Agent("e2e-identity") as again:
+        assert again.id == agent_id
+
+
+def test_storage_survives_restart():
+    with Agent("e2e-persist") as agent:
+        agent.storage.write("note.txt", "kept")
+    with Agent("e2e-persist") as agent:
+        assert agent.storage.read("note.txt") == b"kept"
+
+
+def test_approval_tool_denied_by_approver():
+    @tool(approval=True)
+    def launch() -> str:
+        """Launch the rocket."""
+        return "launched"
+
+    with Agent("e2e-approval", tools=[launch], max_steps=3,
+               approve=lambda name, args: False) as agent:
+        results = [e.data["result"] for e in agent.stream("Call launch now.")
+                   if e.kind == "tool_result"]
+    assert results and all(r.startswith("denied") for r in results)

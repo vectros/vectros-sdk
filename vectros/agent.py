@@ -70,6 +70,40 @@ def _extract_json(text: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def _function_spec(item: Tool | KernelTool) -> dict:
+    return {"type": "function", "function": {
+        "name": item.name, "description": item.description, "parameters": item.parameters}}
+
+
+def _parse_envelope(text: str, step: int) -> tuple[str, list[dict]]:
+    """Split the LLM worker's tool envelope into content and tool calls.
+    A plain-text reply (older worker) is a final answer."""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return text, []
+    if not isinstance(value, dict) or value.get("aios_llm_result") != 1:
+        return text, []
+    calls = []
+    for index, call in enumerate(value.get("tool_calls") or []):
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict) or not function.get("name"):
+            continue
+        calls.append({"id": call.get("id") or f"call_{step}_{index}", "type": "function",
+                      "function": {"name": str(function["name"]),
+                                   "arguments": function.get("arguments") or "{}"}})
+    return str(value.get("content") or "").strip(), calls
+
+
+def _parse_arguments(raw: Any) -> Any:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw) if raw else {}
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def ask_terminal(tool_name: str, args: dict) -> bool:
     """Approver that asks on the terminal: ``Agent(..., approve=ask_terminal)``."""
     answer = input(f"Allow tool {tool_name} {json.dumps(args, ensure_ascii=False)}? [y/N] ")
@@ -103,16 +137,21 @@ class Agent:
         session: Keep the conversation under this name across runs and restarts.
         max_steps: Maximum model calls per run.
         approve: Called as ``approve(tool_name, args) -> bool`` for tools that
-            need approval. Without it, kernel tools wait for the owner in AIOS
-            Manager and ``@tool(approval=True)`` functions are denied.
+            need approval. Without it, the call waits for the owner to decide
+            in AIOS Manager.
         timeout: Seconds allowed for each model or tool call.
+        tool_protocol: "native" uses the model's function calling; "json"
+            asks for JSON replies instead, for models without tool support.
     """
 
     def __init__(self, name: str, *, model: str | None = None,
                  tools: Iterable[Tool | str] = (), system: str | None = None,
                  session: str | None = None, max_steps: int = 10,
                  approve: Approver | None = None, timeout: float = 120,
-                 kernel: Any = None):
+                 tool_protocol: str = "native", kernel: Any = None):
+        if tool_protocol not in ("native", "json"):
+            raise ValueError('tool_protocol must be "native" or "json"')
+        self.tool_protocol = tool_protocol
         self.name = _safe_name(name)
         self.model = model
         self.system = system
@@ -141,7 +180,7 @@ class Agent:
             self._finalizer = weakref.finalize(self, _release, self._kernel, self._agent_id,
                                                self._owns_kernel)
             self._kernel.setup_core(self._agent_id, SYSCALL_LLM, self.model or "")
-            if any(isinstance(spec, str) for spec in self._tool_specs):
+            if self._tool_specs:
                 self._kernel.setup_core(self._agent_id, SYSCALL_TOOL)
         if storage and not self._storage_ready:
             from ._kernel import SYSCALL_STORAGE
@@ -217,6 +256,11 @@ class Agent:
             span = root.child("aios.action", "AGENT") if root else None
             return kernel.tool(agent_id, item.name, args, self.timeout_ms,
                                self.approve, span)
+        if getattr(kernel, "supports_client_tools", False):
+            span = root.child(f"tool.{item.name}", "TOOL") if root else None
+            return kernel.client_tool(agent_id, item.name, args, lambda: item.invoke(args),
+                                      item.approval, self.approve, self.timeout_ms, span)
+        # Kernels before ABI 4.3 cannot mediate local tools: approve here.
         if item.approval and not (self.approve and self.approve(item.name, args)):
             raise ToolDenied(item.name, "approval required" if not self.approve else "denied by approver")
         span = root.child(f"tool.{item.name}", "TOOL") if root else None
@@ -234,6 +278,33 @@ class Agent:
 
     # --- running ---
 
+    @staticmethod
+    def _relay(reply, emit: bool):
+        """Forward streamed text as token events; return the full result."""
+        while True:
+            try:
+                chunk = next(reply)
+            except StopIteration as done:
+                return (done.value or "").strip()
+            if emit:
+                yield Event("token", chunk)
+
+    def _run_tool_call(self, tools, name: str, args: Any, root):
+        yield Event("tool_call", {"tool": name, "args": args})
+        if name not in tools:
+            observation = f"error: unknown tool {name!r}; use one of {', '.join(tools)}"
+        elif not isinstance(args, dict):
+            observation = "error: arguments must be a JSON object"
+        else:
+            try:
+                observation = self._call_tool(tools[name], args, root)
+            except ToolDenied as exc:
+                observation = f"denied: {exc.reason or exc}"
+            except Exception as exc:  # Report the failure back to the model.
+                observation = f"error: {type(exc).__name__}: {exc}"
+        yield Event("tool_result", {"tool": name, "result": observation})
+        return observation[:OBSERVATION_MAX]
+
     def stream(self, prompt: str) -> Iterator[Event]:
         """Run the agent, yielding tokens, tool calls and the final answer."""
         tools = self._resolve_tools()
@@ -242,47 +313,45 @@ class Agent:
         if kernel.trace_enabled(agent_id):
             root = TraceSpan.root(f"agent.{self.name}", "AGENT", agent_id, self.session)
             root.set_input(prompt, "text/plain")
-        system = self._system_prompt(tools)
+        native = bool(tools) and self.tool_protocol == "native"
+        json_protocol = bool(tools) and not native
+        system = self._system_prompt(tools) if json_protocol else self.system
+        specs = [_function_spec(item) for item in tools.values()] if native else None
         turn: list[dict] = [{"role": "user", "content": prompt}]
         answer = None
         try:
-            for _ in range(self.max_steps):
+            for step in range(self.max_steps):
                 messages = ([{"role": "system", "content": system}] if system else []) \
                     + self.history + turn
                 span = root.child("aios.planning", "AGENT") if root else None
-                reply = kernel.llm_stream(agent_id, messages, self.model, json_mode=bool(tools),
-                                          timeout_ms=self.timeout_ms, span=span)
-                while True:
-                    try:
-                        chunk = next(reply)
-                    except StopIteration as done:
-                        text = (done.value or "").strip()
-                        break
-                    if not tools:  # Tool steps are JSON; only plain chat streams.
-                        yield Event("token", chunk)
+                reply = kernel.llm_stream(agent_id, messages, self.model, json_mode=json_protocol,
+                                          timeout_ms=self.timeout_ms, span=span, tools=specs)
+                # JSON-protocol steps are machine text; everything else streams.
+                text = yield from self._relay(reply, emit=not json_protocol)
                 if not tools:
                     answer = text
                     break
+                if native:
+                    content, calls = _parse_envelope(text, step)
+                    if not calls:
+                        answer = content
+                        break
+                    turn.append({"role": "assistant", "content": content, "tool_calls": calls})
+                    for call in calls:
+                        observation = yield from self._run_tool_call(
+                            tools, call["function"]["name"],
+                            _parse_arguments(call["function"]["arguments"]), root)
+                        turn.append({"role": "tool", "tool_call_id": call["id"],
+                                     "content": observation})
+                    continue
                 plan = _extract_json(text)
                 if plan is None or "tool" not in plan:
                     answer = str(plan.get("answer", text)) if plan else text
                     break
-                name, args = str(plan["tool"]), plan.get("args") or {}
-                yield Event("tool_call", {"tool": name, "args": args})
-                if name not in tools:
-                    observation = f"error: unknown tool {name!r}; use one of {', '.join(tools)}"
-                elif not isinstance(args, dict):
-                    observation = "error: args must be a JSON object"
-                else:
-                    try:
-                        observation = self._call_tool(tools[name], args, root)
-                    except ToolDenied as exc:
-                        observation = f"denied: {exc.reason or exc}"
-                    except Exception as exc:  # Report the failure back to the model.
-                        observation = f"error: {type(exc).__name__}: {exc}"
-                yield Event("tool_result", {"tool": name, "result": observation})
+                name = str(plan["tool"])
+                observation = yield from self._run_tool_call(tools, name, plan.get("args") or {}, root)
                 turn += [{"role": "assistant", "content": json.dumps(plan, ensure_ascii=False)},
-                         {"role": "user", "content": f"Tool {name} returned:\n{observation[:OBSERVATION_MAX]}"}]
+                         {"role": "user", "content": f"Tool {name} returned:\n{observation}"}]
             if answer is None:
                 raise StepLimitReached(f"no answer after {self.max_steps} steps")
         except BaseException as exc:

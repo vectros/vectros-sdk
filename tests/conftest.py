@@ -2,11 +2,15 @@ import json
 
 import pytest
 
+from vectros import ToolDenied
+
 
 class FakeKernel:
     """Stands in for vectros._kernel.Kernel; replies come from a script."""
 
-    def __init__(self, replies=(), registry=(), tool_results=None):
+    def __init__(self, replies=(), registry=(), tool_results=None, client_tools=True):
+        self.supports_client_tools = client_tools
+        self.client_calls = []
         self.replies = list(replies)
         self.registry = list(registry)
         self.tool_results = tool_results or {}
@@ -34,14 +38,18 @@ class FakeKernel:
         return False
 
     def llm_stream(self, agent_id, messages, model=None, json_mode=False,
-                   timeout_ms=0, span=None):
-        self.llm_calls.append({"messages": messages, "model": model, "json_mode": json_mode})
+                   timeout_ms=0, span=None, tools=None):
+        self.llm_calls.append({"messages": [dict(m) for m in messages], "model": model,
+                               "json_mode": json_mode, "tools": tools})
         reply = self.replies.pop(0)
-        if isinstance(reply, dict):
-            reply = json.dumps(reply)
-        for index in range(0, len(reply), 4):
-            yield reply[index:index + 4]
-        return reply
+        # Like the worker: only content streams; the result is the full reply.
+        streamed = reply.get("content", "") if isinstance(reply, dict) and \
+            reply.get("aios_llm_result") == 1 else reply
+        if isinstance(streamed, dict):
+            streamed = json.dumps(streamed)
+        for index in range(0, len(streamed), 4):
+            yield streamed[index:index + 4]
+        return json.dumps(reply) if isinstance(reply, dict) else reply
 
     def tool(self, agent_id, name, args, timeout_ms=0, approve=None, span=None):
         self.tool_calls.append((name, args))
@@ -49,6 +57,14 @@ class FakeKernel:
         if isinstance(result, Exception):
             raise result
         return result
+
+    def client_tool(self, agent_id, name, args, run, approval=False, approve=None,
+                    timeout_ms=0, span=None):
+        """Mimics the kernel: held calls need approve(), else the owner denies."""
+        self.client_calls.append((name, args, approval))
+        if approval and not (approve and approve(name, args)):
+            raise ToolDenied(name, "denied or cancelled by the owner")
+        return run()
 
     def list_tools(self):
         return self.registry

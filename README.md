@@ -23,8 +23,15 @@ loop, streams output, emits traces and unregisters the agent at exit.
 - **Scheduling and quotas.** Every model call is an AIOS LLM syscall. The kernel
   queues it fairly with other agents and enforces per-agent limits.
 - **Model allowlist.** `model=` must be on the administrator's allowlist.
-- **Approvals.** Kernel tools flagged as side-effecting are held until the owner
-  approves them, through `approve=` or in AIOS Manager.
+- **Tool control.** Every tool call is a kernel syscall, including your own
+  `@tool` functions. The kernel checks permission, applies the deadline and
+  records the call.
+- **Approvals.** Kernel tools flagged as side-effecting, and `@tool(approval=True)`
+  functions, are held until the owner approves them, through `approve=` or in
+  AIOS Manager.
+- **Stable identity.** The agent ID comes from your UID and the agent name.
+  Only one agent with that name runs per user, and its storage survives
+  restarts.
 - **Tracing.** Runs appear in AIOS Trace with kernel queue and lease timings.
 - **Storage.** `agent.storage` is private, versioned and quota-limited.
 
@@ -55,6 +62,7 @@ Agent(
     max_steps=10,         # maximum model calls per run
     approve=None,         # approve(tool_name, args) -> bool
     timeout=120,          # seconds per model or tool call
+    tool_protocol="native",  # or "json" for models without function calling
 )
 ```
 
@@ -92,10 +100,15 @@ agent = Agent("ops", tools=[search, send_email, "search_web"], approve=ask_termi
 - The SDK builds the parameter schema from type hints, and descriptions from
   the docstring and its `Args:` section.
 - A string names a tool registered in the kernel, for example an admin tool or
-  an MCP tool such as `github__create_issue`. These run in the AIOS tool worker,
-  under kernel permissions and approvals.
-- `@tool` functions run in the agent's own process. When a tool raises an
-  error, the error goes back to the model, and the model can try again.
+  an MCP tool such as `github__create_issue`. These run in the AIOS tool worker.
+- `@tool` functions run in the agent's own process. Each call is first
+  submitted as a kernel client tool call (ABI 4.3). The function runs only
+  after the kernel hands the call back, which can be after owner approval.
+- When a tool raises an error, the error goes back to the model, and the model
+  can try again.
+- Tool calls use the model's native function calling. For models without
+  function calling, set `tool_protocol="json"`: the agent then asks for JSON
+  replies.
 
 ## Sessions
 
@@ -151,12 +164,20 @@ pytest                         # unit tests, fake kernel
 VECTROS_E2E=1 pytest -m kernel # real aios.ko and workers
 ```
 
-## Limits in this version
+## Kernel versions
 
-- `@tool` functions run in the agent process, so the kernel does not see or
-  audit them. A kernel permit syscall for these calls is planned.
-- The kernel assigns a new agent ID on each registration. Kernel storage is
-  keyed by agent ID, so `agent.storage` data is not readable after a restart.
-  Sessions use local files for this reason.
-- The LLM worker returns text only, so tool calls use a JSON reply protocol,
-  not native function calling.
+The SDK needs ABI 4. Kernels before 4.3 still work with these limits:
+
+- Agent IDs are random, so `agent.storage` data is not readable after a restart.
+- `@tool` functions run in-process without kernel mediation. The SDK enforces
+  `approval=True` itself and denies the call when no `approve=` is set.
+
+## Limits
+
+- The kernel sees that a `@tool` function ran, but it cannot see what the
+  function does inside the agent process.
+- Sessions are local files on the host, not kernel storage. Kernel storage
+  files are limited to 64 KiB.
+- Native tool calls need the LLM worker that returns the tool envelope
+  (vectros-kernel with ABI 4.3). An older worker returns plain text, so the
+  agent treats the reply as the final answer.
