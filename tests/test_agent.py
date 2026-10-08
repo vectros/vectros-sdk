@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from vectros import Agent, StepLimitReached, VectrosError, tool
+from vectros import Agent, KernelError, StepLimitReached, VectrosError, tool
 from vectros._kernel import SYSCALL_LLM, SYSCALL_STORAGE, SYSCALL_TOOL
 
 
@@ -167,6 +167,23 @@ def test_native_tool_calls_run_through_kernel_and_feed_back(fake):
                              {"role": "tool", "tool_call_id": "c1", "content": "2"}]
     assert kernel.client_calls == [("add", {"a": 2, "b": 3}, False), ("add", {"a": 1, "b": 1}, False)]
     assert "".join(e.data for e in events if e.kind == "token").startswith("Let me add.")
+
+
+def test_empty_reply_after_tool_results_is_retried_once(fake):
+    empty = KernelError(5, "LLM backend returned no content (finish_reason=stop)")
+    kernel = fake(replies=[envelope("", [("add", {"a": 2, "b": 3})]), empty, envelope("It is 5.")])
+    agent = Agent("calc", tools=[add], kernel=kernel)
+    assert agent.run("2+3?") == "It is 5."
+    retry = kernel.llm_calls[2]["messages"]
+    assert retry[-1]["role"] == "user" and "final answer" in retry[-1]["content"]
+    assert agent.history == [{"role": "user", "content": "2+3?"},
+                             {"role": "assistant", "content": "It is 5."}]
+
+
+def test_empty_reply_without_tool_results_is_an_error(fake):
+    empty = KernelError(5, "LLM backend returned no content (finish_reason=stop)")
+    with pytest.raises(KernelError, match="no content"):
+        Agent("t", tools=[add], kernel=fake(replies=[empty])).run("hi")
 
 
 def test_native_plain_text_reply_is_the_answer(fake):

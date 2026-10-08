@@ -42,6 +42,8 @@ class FakeKernel:
         self.llm_calls.append({"messages": [dict(m) for m in messages], "model": model,
                                "json_mode": json_mode, "tools": tools})
         reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
         # Like the worker: only content streams; the result is the full reply.
         streamed = reply.get("content", "") if isinstance(reply, dict) and \
             reply.get("aios_llm_result") == 1 else reply

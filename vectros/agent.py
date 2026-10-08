@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 from ._tracing import TraceSpan
-from .errors import StepLimitReached, ToolDenied, VectrosError
+from .errors import KernelError, StepLimitReached, ToolDenied, VectrosError
 from .tools import KernelTool, Tool
 
 Approver = Callable[[str, dict], bool]
@@ -93,6 +93,15 @@ def _parse_envelope(text: str, step: int) -> tuple[str, list[dict]]:
                       "function": {"name": str(function["name"]),
                                    "arguments": function.get("arguments") or "{}"}})
     return str(value.get("content") or "").strip(), calls
+
+
+# Some models (gemma4 among them) now and then return no text after reading
+# tool results; the worker reports that as EIO "no content".
+_FINAL_NUDGE = "Using the tool results above, give your final answer to the user now."
+
+
+def _empty_reply(exc: KernelError) -> bool:
+    return exc.errno == 5 and "no content" in str(exc)
 
 
 def _parse_arguments(raw: Any) -> Any:
@@ -319,6 +328,7 @@ class Agent:
         specs = [_function_spec(item) for item in tools.values()] if native else None
         turn: list[dict] = [{"role": "user", "content": prompt}]
         answer = None
+        nudged = False
         try:
             for step in range(self.max_steps):
                 messages = ([{"role": "system", "content": system}] if system else []) \
@@ -327,7 +337,15 @@ class Agent:
                 reply = kernel.llm_stream(agent_id, messages, self.model, json_mode=json_protocol,
                                           timeout_ms=self.timeout_ms, span=span, tools=specs)
                 # JSON-protocol steps are machine text; everything else streams.
-                text = yield from self._relay(reply, emit=not json_protocol)
+                try:
+                    text = yield from self._relay(reply, emit=not json_protocol)
+                except KernelError as exc:
+                    # After tool results, ask once more for the answer.
+                    if nudged or len(turn) == 1 or not _empty_reply(exc):
+                        raise
+                    nudged = True
+                    turn.append({"role": "user", "content": _FINAL_NUDGE})
+                    continue
                 if not tools:
                     answer = text
                     break
