@@ -1,15 +1,35 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vectros"
+# The import package is `vectros`; the PyPI name "vectros" belongs to an
+# unrelated project.
+name = "vectros-sdk"
 version = "2.0.0"
 description = "Build AI agents that run on the AIOS kernel (Vectros OS)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "The Vectros authors" }]
+keywords = ["agents", "llm", "aios", "kernel", "vectros"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/vectros/vectros-sdk"
+Issues = "https://github.com/vectros/vectros-sdk/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]

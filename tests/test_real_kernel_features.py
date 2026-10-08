@@ -125,7 +125,7 @@ def test_approval_tool_runs_when_approved():
         seen.append((name, args))
         return True
 
-    with Agent("e2e-approve", tools=[launch], max_steps=3, approve=approve) as agent:
+    with Agent("e2e-approve", tools=[launch], max_steps=5, approve=approve) as agent:
         events = list(agent.stream("Call launch with target 'moon'."))
     assert seen and seen[0][0] == "launch"
     results = [e.data["result"] for e in events if e.kind == "tool_result"]

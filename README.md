@@ -32,7 +32,9 @@ loop, streams output, emits traces and unregisters the agent at exit.
 - **Stable identity.** The agent ID comes from your UID and the agent name.
   Only one agent with that name runs per user, and its storage survives
   restarts.
-- **Tracing.** Runs appear in AIOS Trace with kernel queue and lease timings.
+- **Tracing.** When the administrator enables tracing for the agent
+  (`sudo aiosctl trace enable <agent-id>`), runs appear in AIOS Trace with
+  kernel queue and lease timings. Tracing is off by default.
 - **Storage.** `agent.storage` is private, versioned and quota-limited.
 
 The SDK needs `aios.ko` loaded and `libaios.so` installed. There is no
@@ -47,8 +49,11 @@ userspace fallback. Without the kernel, the SDK raises `KernelUnavailable`.
 - `libaios.so` in `/usr/lib`, or its path in `VECTROS_LIBAIOS`
 
 ```sh
-pip install .
+pip install vectros-sdk
 ```
+
+The package installs as `vectros-sdk` and imports as `vectros`. On Vectros OS
+it is preinstalled as the `python-vectros` package.
 
 ## Agent
 
