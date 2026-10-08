@@ -65,6 +65,14 @@ def test_denied_call_never_runs():
     assert ran == [] and ("owner", k.OWNER_DENY_TOOL) in kernel.log
 
 
+def test_denied_kernel_tool_raises_tool_denied():
+    kernel = Recorder([k.STATE_HELD_APPROVAL, k.STATE_CANCELLED],
+                      wait_error=KernelError(errno.ECANCELED, "Operation canceled"))
+    with pytest.raises(ToolDenied):
+        kernel.tool(1, "fs__write_file", {}, approve=lambda n, a: False)
+    assert ("owner", k.OWNER_DENY_TOOL) in kernel.log
+
+
 def test_without_approver_waits_for_manager():
     kernel = Recorder([k.STATE_HELD_APPROVAL] * 3 + [k.STATE_PROCESSING])
     kernel.client_tool(1, "rm", {}, lambda: "ok", approval=True)

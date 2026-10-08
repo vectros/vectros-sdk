@@ -334,8 +334,11 @@ class Kernel:
         try:
             return self.wait(syscall_id).decode("utf-8", "replace").rstrip("\0")
         except KernelError as exc:
+            # EACCES: no permission; ECANCELED: the owner (or approve()) denied it.
             if exc.errno == errno.EACCES:
                 raise ToolDenied(name, str(exc)) from exc
+            if exc.errno == errno.ECANCELED:
+                raise ToolDenied(name, "denied or cancelled by the owner") from exc
             raise
 
     def client_tool(self, agent_id: int, name: str, args: dict, run: Callable[[], str],
