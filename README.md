@@ -32,9 +32,11 @@ loop, streams output, emits traces and unregisters the agent at exit.
 - **Stable identity.** The agent ID comes from your UID and the agent name.
   Only one agent with that name runs per user, and its storage survives
   restarts.
-- **Tracing.** When the administrator enables tracing for the agent
-  (`sudo aiosctl trace enable <agent-id>`), runs appear in AIOS Trace with
-  kernel queue and lease timings. Tracing is off by default.
+- **Tracing.** When the administrator enables tracing, runs appear in AIOS
+  Trace with kernel queue and lease timings. Tracing is off by default. To
+  trace an agent every time it runs, the administrator lists its name in the
+  kernel's `trace_agents` parameter; `sudo aiosctl trace enable <agent-id>`
+  traces one running agent.
 - **Storage.** `agent.storage` is private, versioned and quota-limited.
 
 The SDK needs `aios.ko` loaded and `libaios.so` installed. There is no
@@ -149,6 +151,9 @@ object = "agent"       # Agent variable used by `vectros chat`
 [deploy]
 host = "me@vectros-host"
 ```
+
+The host needs SSH and rsync. VectrOS ships both with sshd off; the owner
+turns it on with `sudo systemctl enable --now sshd`. Use key authentication.
 
 `vectros deploy` does the following:
 
