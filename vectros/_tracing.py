@@ -144,6 +144,17 @@ class _BestEffortSender:
         with self._lock:
             self.dropped += 1
 
+    def flush(self, timeout: float) -> bool:
+        """Wait up to timeout seconds for queued spans to be sent."""
+        deadline = time.monotonic() + timeout
+        with self._queue.all_tasks_done:
+            while self._queue.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._queue.all_tasks_done.wait(remaining)
+        return True
+
     def _run(self) -> None:
         while True:
             record, agent_id = self._queue.get()
@@ -177,6 +188,15 @@ class _BestEffortSender:
 
 
 _SENDER = _BestEffortSender()
+
+
+def flush_spans(timeout: float = 2.0) -> bool:
+    """Send queued spans while their agent is still registered.
+
+    The collector checks each span against the live kernel agent, so spans
+    must leave before the agent unregisters or the process exits.
+    """
+    return _SENDER.flush(timeout)
 
 
 @dataclass

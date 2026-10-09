@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
-from ._tracing import TraceSpan
+from ._tracing import TraceSpan, flush_spans
 from .errors import KernelError, StepLimitReached, ToolDenied, VectrosError
 from .tools import KernelTool, Tool
 
@@ -432,6 +432,7 @@ class Agent:
 
 
 def _release(kernel, agent_id: int, owns_kernel: bool) -> None:
+    flush_spans()
     try:
         kernel.unregister(agent_id)
     except Exception:
