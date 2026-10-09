@@ -181,6 +181,13 @@ class _BestEffortSender:
                             sock.sendall(record[sent:])
                     else:
                         sock.sendall(record)
+                    # The collector closes the connection once it has checked the
+                    # span against the live kernel agent; wait for that, so the
+                    # agent does not unregister first.
+                    sock.shutdown(socket.SHUT_WR)
+                    sock.settimeout(1.0)
+                    while sock.recv(64):
+                        pass
             except (OSError, TimeoutError):
                 self._drop()
             finally:
