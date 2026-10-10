@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # The import package is `vectros`; the PyPI name "vectros" belongs to an
 # unrelated project.
 name = "vectros-sdk"
-version = "2.0.0"
+version = "2.0.1"
 description = "Build AI agents that run on the AIOS kernel (Vectros OS)"
 readme = "README.md"
 requires-python = ">=3.11"

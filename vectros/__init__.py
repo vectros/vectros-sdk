@@ -16,7 +16,7 @@ from .errors import (KernelError, KernelUnavailable, StepLimitReached, ToolDenie
                      VectrosError)
 from .tools import KernelTool, Tool, tool
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 __all__ = [
     "Agent", "Event", "KernelError", "KernelTool", "KernelUnavailable", "StepLimitReached",
