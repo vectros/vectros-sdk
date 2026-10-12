@@ -216,3 +216,35 @@ def test_any_tool_sets_up_tool_core(fake):
 def test_invalid_tool_protocol(fake):
     with pytest.raises(ValueError):
         Agent("t", tool_protocol="xml", kernel=fake())
+
+
+def test_trace_true_turns_tracing_on_at_registration(fake):
+    kernel = fake(replies=["hi"])
+    agent = Agent("traced", trace=True, kernel=kernel)
+    agent.run("hello")
+    assert kernel.traced == {agent.id}
+
+
+def test_trace_default_leaves_the_administrators_choice(fake, monkeypatch):
+    monkeypatch.delenv("VECTROS_TRACE", raising=False)
+    kernel = fake(replies=["hi"])
+    agent = Agent("plain", kernel=kernel)
+    agent.run("hello")
+    assert kernel.traced == set()
+
+
+def test_vectros_trace_environment_variable_turns_tracing_on(fake, monkeypatch):
+    monkeypatch.setenv("VECTROS_TRACE", "1")
+    kernel = fake(replies=["hi"])
+    agent = Agent("env", kernel=kernel)
+    agent.run("hello")
+    assert kernel.traced == {agent.id}
+
+
+def test_trace_refused_by_an_older_kernel_warns_and_runs(fake):
+    kernel = fake(replies=["hi"])
+    kernel.abi_minor = 4
+    kernel.trace_error = KernelError(1, "set trace: Operation not permitted")
+    agent = Agent("old", trace=True, kernel=kernel)
+    with pytest.warns(RuntimeWarning, match="ABI 4.5"):
+        assert agent.run("hello") == "hi"

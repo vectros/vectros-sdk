@@ -128,7 +128,14 @@ def cmd_init(args) -> None:
     print(f"next: cd {project} && vectros chat")
 
 
+def _trace_flag(args) -> None:
+    # Agents read VECTROS_TRACE when they are created.
+    if args.trace:
+        os.environ["VECTROS_TRACE"] = "1"
+
+
 def cmd_run(args) -> None:
+    _trace_flag(args)
     project = Path(args.project)
     config = load_config(project)
     entry = (project / config["agent"].get("entry", "agent.py")).resolve()
@@ -153,6 +160,7 @@ def _load_agent(project: Path, config: dict):
 
 
 def cmd_chat(args) -> None:
+    _trace_flag(args)
     project = Path(args.project)
     agent = _load_agent(project, load_config(project))
     if args.prompt:
@@ -245,6 +253,29 @@ def cmd_stop(args) -> None:
     print("stopped")
 
 
+ALLOWLIST = "/sys/module/aios/parameters/allowed_llm_models"
+PROVIDERS = ("openai", "anthropic", "gemini", "nvidia")
+
+
+def cmd_models(args) -> None:
+    """Print the kernel's model allowlist, grouped by where each model runs."""
+    try:
+        raw = Path(args.allowlist).read_text().strip()
+    except OSError as exc:
+        raise CliError(f"cannot read {args.allowlist}: {exc.strerror} (is aios.ko loaded?)")
+    models = [item.strip() for item in raw.split(",") if item.strip()]
+    if models == ["*"]:
+        print("every model is allowed (allowed_llm_models=*)")
+        return
+    if not models:
+        print("no models are allowed; the administrator sets aios.allowed_llm_models")
+        return
+    for model in models:
+        prefix, sep, _ = model.partition("/")
+        where = prefix if sep and prefix in PROVIDERS else "local"
+        print(f"{where:10} {model}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vectros", description="Build and deploy AIOS agents.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -255,13 +286,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("run", help="run the entry script")
     p.add_argument("-C", "--project", default=".")
+    p.add_argument("--trace", action="store_true",
+                   help="trace the agent's runs in AIOS Trace (sets VECTROS_TRACE=1)")
     p.add_argument("args", nargs=argparse.REMAINDER, help="arguments for the script")
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("chat", help="talk to the agent")
     p.add_argument("-C", "--project", default=".")
+    p.add_argument("--trace", action="store_true",
+                   help="trace the agent's runs in AIOS Trace (sets VECTROS_TRACE=1)")
     p.add_argument("prompt", nargs="*", help="one-shot prompt; omit for interactive chat")
     p.set_defaults(func=cmd_chat)
+
+    p = sub.add_parser("models", help="list the models agents may request")
+    p.add_argument("--allowlist", default=ALLOWLIST, help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_models)
 
     for command, func, text in (("deploy", cmd_deploy, "deploy to a Vectros OS host"),
                                 ("logs", cmd_logs, "show the deployed agent's logs"),

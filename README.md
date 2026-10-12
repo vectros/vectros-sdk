@@ -32,11 +32,13 @@ loop, streams output, emits traces and unregisters the agent at exit.
 - **Stable identity.** The agent ID comes from your UID and the agent name.
   Only one agent with that name runs per user, and its storage survives
   restarts.
-- **Tracing.** When the administrator enables tracing, runs appear in AIOS
-  Trace with kernel queue and lease timings. Tracing is off by default. To
-  trace an agent every time it runs, the administrator lists its name in the
-  kernel's `trace_agents` parameter; `sudo aiosctl trace enable <agent-id>`
-  traces one running agent.
+- **Tracing.** Runs appear in AIOS Trace with kernel queue and lease
+  timings. Tracing is off by default. Turn it on for your own agent with
+  `Agent(..., trace=True)`, `VECTROS_TRACE=1` or `vectros run --trace`
+  (kernel ABI 4.5 or later). The administrator can also trace agents by name
+  with the kernel's `trace_agents` parameter, or one running agent with
+  `sudo aiosctl trace enable <agent-id>`. An agent cannot turn off tracing
+  that the administrator turned on.
 - **Storage.** `agent.storage` is private, versioned and quota-limited.
 
 The SDK needs `aios.ko` loaded and `libaios.so` installed. There is no
@@ -62,14 +64,15 @@ it is preinstalled as the `python-vectros` package.
 ```python
 Agent(
     name,                 # shown in AIOS Manager and Trace
-    model=None,           # default: the LLM worker's model
-    tools=[],             # @tool functions and/or kernel tool names
+    model=None,           # default: the LLM worker's model; or "anthropic/..." etc.
+    tools=[],             # @tool functions, kernel tool names, MCPServers
     system=None,          # system prompt
     session=None,         # keep the conversation across runs and restarts
     max_steps=10,         # maximum model calls per run
     approve=None,         # approve(tool_name, args) -> bool
     timeout=120,          # seconds per model or tool call
     tool_protocol="native",  # or "json" for models without function calling
+    trace=None,           # True: trace this agent's runs (default: VECTROS_TRACE)
 )
 ```
 
@@ -86,6 +89,31 @@ for event in agent.stream("Plan my day"):
     if event.kind == "token":
         print(event.data, end="")
 ```
+
+## Models
+
+Every model call goes through the kernel, so the LLM worker decides where it
+runs. A plain name (`gemma4:e4b`) goes to the worker's local endpoint (Ollama
+or vLLM). A `<provider>/<model>` name goes to a hosted provider when the
+administrator has set that provider's key for the worker in
+`/etc/aios/aios.env`:
+
+| Provider | `model=` example | Worker key |
+| --- | --- | --- |
+| OpenAI | `openai/gpt-5` | `OPENAI_API_KEY` |
+| Anthropic | `anthropic/claude-opus-5-5` | `ANTHROPIC_API_KEY` |
+| Google Gemini | `gemini/gemini-2.5-flash` | `GEMINI_API_KEY` |
+| NVIDIA NIM | `nvidia/meta/llama-3.3-70b-instruct` | `NVIDIA_API_KEY` |
+
+```python
+agent = Agent("helper", model="anthropic/claude-opus-5-5", tools=[weather])
+```
+
+The model must also be on the kernel's allowlist (`allowed_llm_models`).
+`vectros models` lists the allowlist and where each model runs. API keys stay
+with the worker; agents never see them. Without the key, the name goes to the
+local endpoint unchanged, so a vLLM model called `openai/gpt-oss-20b` still
+works.
 
 ## Tools
 
@@ -117,6 +145,64 @@ agent = Agent("ops", tools=[search, send_email, "search_web"], approve=ask_termi
   function calling, set `tool_protocol="json"`: the agent then asks for JSON
   replies.
 
+## MCP servers
+
+```python
+from vectros import Agent, MCPServer
+
+files = MCPServer("files", "npx -y @modelcontextprotocol/server-filesystem .")
+github = MCPServer("github", url="https://api.githubcopilot.com/mcp/",
+                   headers={"Authorization": f"Bearer {token}"})
+agent = Agent("ops", tools=[files, github], approve=ask_terminal)
+```
+
+- The agent's process starts the server (stdio) or connects to it (Streamable
+  HTTP). The SDK has its own MCP client with no extra dependencies.
+- Each MCP tool becomes `<server>__<tool>` and runs as a kernel client tool
+  call, like a `@tool` function: the kernel checks permission, applies the
+  deadline, records the call and holds it for approval when needed.
+- Tools need approval unless the server marks them read-only
+  (`readOnlyHint`). Override with `approval=False`, `approval=True` or a list
+  of tool names. `tools=[...]` offers only the named server tools.
+- `MCPServer.from_config("mcp.json")` reads the `{"mcpServers": {...}}` format
+  of other MCP hosts and the AIOS tool worker. `${VAR}` reads the environment.
+- `server.close()` or `with MCPServer(...)` stops the server; otherwise it
+  stops at exit.
+
+For servers that every agent on a host shares, the administrator registers
+them in the AIOS tool worker instead, and agents name the tools by string.
+
+## DeepAgent
+
+A `DeepAgent` handles long, multi-step work. It plans, keeps notes in files
+and hands parts of the work to subagents.
+
+```python
+from vectros import DeepAgent, SubAgent
+
+researcher = SubAgent("researcher", "Researches one question in depth.",
+                      system="Research thoroughly. Cite sources.",
+                      tools=["search_web"], model="openai/gpt-5")
+agent = DeepAgent("analyst", tools=[search], subagents=[researcher],
+                  model="anthropic/claude-opus-5-5", session="q3")
+print(agent.run("Compare the three largest Linux schedulers"))
+print(agent.todos, agent.files)
+```
+
+It takes every `Agent` argument (default `max_steps=50`) and adds these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `write_todos` | Keep a plan of pending, in-progress and completed steps |
+| `ls`, `read_file`, `write_file`, `edit_file` | A private file space for notes and drafts |
+| `task` | Hand a self-contained job to a subagent |
+
+- A subagent is a separate kernel agent, `<parent>.<name>`, with its own
+  scheduling, quotas and trace. It starts with a clean context, shares the
+  parent's file space and returns only its final answer.
+- A `general-purpose` subagent with the parent's tools is always available.
+- With `session=`, the plan and files are saved next to the session history.
+
 ## Sessions
 
 ```python
@@ -133,7 +219,8 @@ messages.
 vectros init helper         # helper/vectros.toml + helper/agent.py
 cd helper
 vectros chat                # interactive; or: vectros chat "one question"
-vectros run                 # run the entry script
+vectros run                 # run the entry script (--trace to trace it)
+vectros models              # models agents may request, and where they run
 vectros deploy me@host      # deploy to a Vectros OS host
 vectros logs -f             # follow the deployed agent's journal
 vectros status

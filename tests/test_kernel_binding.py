@@ -114,3 +114,22 @@ def test_warns_when_library_is_older_than_kernel(monkeypatch):
     monkeypatch.setattr(k.Kernel, "_abi_minor", lambda self: 3)
     with pytest.warns(RuntimeWarning, match="predates the loaded kernel"):
         k.Kernel("/usr/lib64/libaios.so")
+
+
+class DecidedElsewhere(Recorder):
+    """The owner decided in AIOS Manager while approve() was still asking."""
+
+    def owner_action(self, agent_id, action, syscall_id, reason=""):
+        raise OSError(errno.EALREADY, "Operation already in progress")
+
+
+def test_client_tool_accepts_a_decision_made_in_the_manager():
+    kernel = DecidedElsewhere([k.STATE_HELD_APPROVAL, k.STATE_PROCESSING])
+    assert kernel.client_tool(1, "rm", {}, lambda: "ok", approval=True,
+                              approve=lambda n, a: True) == "result"
+    assert kernel.log[-1] == ("complete", b"ok", 0)
+
+
+def test_kernel_tool_accepts_a_decision_made_in_the_manager():
+    kernel = DecidedElsewhere([k.STATE_HELD_APPROVAL])
+    assert kernel.tool(1, "fs__write_file", {}, approve=lambda n, a: True) == "result"

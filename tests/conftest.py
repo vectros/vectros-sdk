@@ -20,6 +20,9 @@ class FakeKernel:
         self.registered = []
         self.unregistered = []
         self.files = {}
+        self.traced = set()
+        self.trace_error = None
+        self.abi_minor = 5
 
     def register(self, name):
         self.registered.append(name)
@@ -35,7 +38,12 @@ class FakeKernel:
         self.cores.append((core, pstr))
 
     def trace_enabled(self, agent_id):
-        return False
+        return agent_id in self.traced
+
+    def set_trace(self, agent_id, enabled):
+        if self.trace_error:
+            raise self.trace_error
+        (self.traced.add if enabled else self.traced.discard)(agent_id)
 
     def llm_stream(self, agent_id, messages, model=None, json_mode=False,
                    timeout_ms=0, span=None, tools=None):

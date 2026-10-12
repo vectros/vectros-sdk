@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import warnings
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Any, Callable, Iterable, Iterator
 
 from ._tracing import TraceSpan, flush_spans
 from .errors import KernelError, StepLimitReached, ToolDenied, VectrosError
+from .mcp import MCPServer
 from .tools import KernelTool, Tool
 
 Approver = Callable[[str, dict], bool]
@@ -140,8 +142,11 @@ class Agent:
     Args:
         name: Agent name shown in AIOS Manager and Trace.
         model: Model to request; it must be on the kernel's model allowlist.
-            Default: the LLM worker's configured model.
-        tools: ``@tool`` functions and/or names of kernel-registered tools.
+            ``"<provider>/<model>"`` (openai, anthropic, gemini, nvidia) uses a
+            hosted provider the LLM worker has a key for, e.g.
+            ``"anthropic/claude-opus-5-5"``. Default: the worker's model.
+        tools: ``@tool`` functions, names of kernel-registered tools and/or
+            ``MCPServer``s, whose tools run as ``<server>__<tool>``.
         system: System prompt.
         session: Keep the conversation under this name across runs and restarts.
         max_steps: Maximum model calls per run.
@@ -151,16 +156,23 @@ class Agent:
         timeout: Seconds allowed for each model or tool call.
         tool_protocol: "native" uses the model's function calling; "json"
             asks for JSON replies instead, for models without tool support.
+        trace: True turns kernel tracing on for this agent when it registers,
+            so its runs appear in AIOS Trace (needs kernel ABI 4.5). Default:
+            on when ``VECTROS_TRACE=1``, else the administrator decides.
     """
 
     def __init__(self, name: str, *, model: str | None = None,
                  tools: Iterable[Tool | str] = (), system: str | None = None,
                  session: str | None = None, max_steps: int = 10,
                  approve: Approver | None = None, timeout: float = 120,
-                 tool_protocol: str = "native", kernel: Any = None):
+                 tool_protocol: str = "native", trace: bool | None = None,
+                 kernel: Any = None):
         if tool_protocol not in ("native", "json"):
             raise ValueError('tool_protocol must be "native" or "json"')
         self.tool_protocol = tool_protocol
+        if trace is None:
+            trace = os.environ.get("VECTROS_TRACE", "").lower() in ("1", "true", "yes", "on")
+        self.trace = trace
         self.name = _safe_name(name)
         self.model = model
         self.system = system
@@ -191,11 +203,24 @@ class Agent:
             self._kernel.setup_core(self._agent_id, SYSCALL_LLM, self.model or "")
             if self._tool_specs:
                 self._kernel.setup_core(self._agent_id, SYSCALL_TOOL)
+            if self.trace:
+                self._enable_trace()
         if storage and not self._storage_ready:
             from ._kernel import SYSCALL_STORAGE
             self._kernel.setup_core(self._agent_id, SYSCALL_STORAGE)
             self._storage_ready = True
         return self._kernel, self._agent_id
+
+    def _enable_trace(self) -> None:
+        try:
+            self._kernel.set_trace(self._agent_id, True)
+        except KernelError as exc:
+            minor = getattr(self._kernel, "abi_minor", 0)
+            hint = (f"the loaded kernel is ABI 4.{minor}; agents can trace themselves from "
+                    "ABI 4.5" if minor < 5 else "the kernel refused")
+            warnings.warn(f"agent {self.name!r} runs untraced: {exc} ({hint}). The "
+                          "administrator can trace it with the kernel's trace_agents "
+                          "parameter.", RuntimeWarning, stacklevel=4)
 
     def close(self) -> None:
         """Unregister from the kernel. Called automatically at exit."""
@@ -231,6 +256,9 @@ class Agent:
         for spec in self._tool_specs:
             if isinstance(spec, Tool):
                 resolved[spec.name] = spec
+            elif isinstance(spec, MCPServer):
+                for item in spec.tools():
+                    resolved[item.name] = item
             elif isinstance(spec, str):
                 if spec not in registry:
                     known = ", ".join(sorted(registry)) or "none"

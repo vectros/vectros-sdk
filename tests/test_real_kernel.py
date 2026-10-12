@@ -63,3 +63,11 @@ def test_approval_tool_denied_by_approver():
         results = [e.data["result"] for e in agent.stream("Call launch now.")
                    if e.kind == "tool_result"]
     assert results and all(r.startswith("denied") for r in results)
+
+
+def test_deep_agent_subagent_registers_on_its_own_handle():
+    # The kernel allows one agent per /dev/aios handle.
+    from vectros import DeepAgent, SubAgent
+    with DeepAgent("e2e-deep", subagents=[SubAgent("helper", "Helps.")]) as agent:
+        sub = agent._subagent("helper")
+        assert sub.id != agent.id and sub.name == "e2e-deep.helper"

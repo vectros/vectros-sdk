@@ -146,6 +146,7 @@ class Kernel:
                                  int_p, int_p],
             "aios_cancel": [void_p, u64],
             "aios_trace_get_enabled": [void_p, u64, int_p],
+            "aios_trace_set_enabled": [void_p, u64, ctypes.c_int],
         }
         self.lib.aios_open.restype = void_p
         self.lib.aios_close.argtypes = [void_p]
@@ -201,6 +202,12 @@ class Kernel:
         if function is None or function(self.h, agent_id, ctypes.byref(enabled)) < 0:
             return False
         return bool(enabled.value)
+
+    def set_trace(self, agent_id: int, enabled: bool) -> None:
+        """Turn kernel tracing on or off for an agent. From ABI 4.5 an agent's
+        own handle may turn it on; anything else needs CAP_SYS_ADMIN."""
+        if self.lib.aios_trace_set_enabled(self.h, agent_id, int(enabled)) < 0:
+            raise _errno_error("set trace")
 
     # --- raw syscalls ---
 
@@ -277,6 +284,18 @@ class Kernel:
                               syscall_id, reason.encode()[:127])
         fcntl.ioctl(self.fd, _IOCTL_OWNER_ACTION, request)
 
+    def _decide(self, agent_id: int, syscall_id: int, allowed: bool) -> None:
+        """Send approve()'s decision on a held call. EALREADY means the owner
+        already decided in AIOS Manager while approve() was asking; that
+        decision stands and the call's state shows it."""
+        try:
+            self.owner_action(agent_id, OWNER_APPROVE_TOOL if allowed else OWNER_DENY_TOOL,
+                              syscall_id, "approved by agent owner" if allowed
+                              else "denied by agent owner")
+        except OSError as exc:
+            if exc.errno != errno.EALREADY:
+                raise
+
     # --- services used by Agent ---
 
     def llm_stream(self, agent_id: int, messages: list[dict], model: str | None = None,
@@ -323,10 +342,7 @@ class Kernel:
             while True:
                 state, _ = self.status(syscall_id)
                 if state == STATE_HELD_APPROVAL:
-                    allowed = approve(name, args)
-                    action = OWNER_APPROVE_TOOL if allowed else OWNER_DENY_TOOL
-                    self.owner_action(agent_id, action, syscall_id,
-                                      "approved by agent owner" if allowed else "denied by agent owner")
+                    self._decide(agent_id, syscall_id, approve(name, args))
                     break
                 if state not in (STATE_CREATED, STATE_QUEUED):
                     break
@@ -361,10 +377,7 @@ class Kernel:
             state, _ = self.status(syscall_id)
             if state == STATE_HELD_APPROVAL and approve is not None and not asked:
                 asked = True
-                allowed = approve(name, args)
-                self.owner_action(agent_id, OWNER_APPROVE_TOOL if allowed else OWNER_DENY_TOOL,
-                                  syscall_id, "approved by agent owner" if allowed
-                                  else "denied by agent owner")
+                self._decide(agent_id, syscall_id, approve(name, args))
                 continue
             if state == STATE_PROCESSING or state in TERMINAL_STATES:
                 break

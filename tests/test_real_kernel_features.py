@@ -132,6 +132,27 @@ def test_approval_tool_runs_when_approved():
     assert results and results[0].startswith("launched at")
 
 
+# --- tracing ---
+
+def test_trace_true_turns_kernel_tracing_on():
+    with Agent("e2e-trace", trace=True) as agent:
+        kernel, agent_id = agent._connect()
+        if kernel.abi_minor < 5:
+            pytest.skip("agents trace themselves from kernel ABI 4.5")
+        assert kernel.trace_enabled(agent_id)
+        assert agent.run("Reply with the word ready.").strip()
+
+
+def test_an_agent_cannot_turn_its_tracing_off():
+    with Agent("e2e-trace-off", trace=True) as agent:
+        kernel, agent_id = agent._connect()
+        if kernel.abi_minor < 5 or os.geteuid() == 0:
+            pytest.skip("needs kernel ABI 4.5 and a non-root user")
+        with pytest.raises(KernelError):
+            kernel.set_trace(agent_id, False)
+        assert kernel.trace_enabled(agent_id)
+
+
 def test_step_limit():
     with pytest.raises(StepLimitReached):
         with Agent("e2e-steps", tools=[secret_number], max_steps=1) as agent:

@@ -49,3 +49,25 @@ def test_run_executes_entry(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert cli.main(["run", "-C", str(project), "a", "b"]) == 0
     assert "ran ['a', 'b']" in capsys.readouterr().out
+
+
+def test_run_trace_sets_vectros_trace_for_the_entry(tmp_path, monkeypatch, capsys):
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "vectros.toml").write_text('[agent]\nname = "p"\nentry = "main.py"\n')
+    (project / "main.py").write_text("import os\nprint('trace', os.environ.get('VECTROS_TRACE'))\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VECTROS_TRACE", raising=False)
+    assert cli.main(["run", "--trace", "-C", str(project)]) == 0
+    assert "trace 1" in capsys.readouterr().out
+
+
+def test_models_groups_the_allowlist_by_provider(tmp_path, capsys):
+    allowlist = tmp_path / "allowed"
+    allowlist.write_text("gemma4:e4b,anthropic/claude-opus-5-5,openai/gpt-5,nvidia/meta/llama\n")
+    assert cli.main(["models", "--allowlist", str(allowlist)]) == 0
+    lines = capsys.readouterr().out.split("\n")
+    assert lines[0].split() == ["local", "gemma4:e4b"]
+    assert lines[1].split() == ["anthropic", "anthropic/claude-opus-5-5"]
+    assert lines[3].split() == ["nvidia", "nvidia/meta/llama"]
+    assert cli.main(["models", "--allowlist", str(tmp_path / "missing")]) == 1

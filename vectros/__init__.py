@@ -12,13 +12,16 @@
 """
 
 from .agent import Agent, Event, Storage, ask_terminal
+from .deep import DeepAgent, SubAgent
 from .errors import (KernelError, KernelUnavailable, StepLimitReached, ToolDenied,
                      VectrosError)
+from .mcp import MCPError, MCPServer
 from .tools import KernelTool, Tool, tool
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
 __all__ = [
-    "Agent", "Event", "KernelError", "KernelTool", "KernelUnavailable", "StepLimitReached",
-    "Storage", "Tool", "ToolDenied", "VectrosError", "ask_terminal", "tool",
+    "Agent", "DeepAgent", "Event", "KernelError", "KernelTool", "KernelUnavailable",
+    "MCPError", "MCPServer", "StepLimitReached", "Storage", "SubAgent", "Tool", "ToolDenied",
+    "VectrosError", "ask_terminal", "tool",
 ]
