@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 from ._tracing import TraceSpan, flush_spans
+from .config import agent_settings
 from .errors import KernelError, StepLimitReached, ToolDenied, VectrosError
 from .mcp import MCPServer
 from .tools import KernelTool, Tool
@@ -28,6 +29,10 @@ Approver = Callable[[str, dict], bool]
 
 OBSERVATION_MAX = 8000
 HISTORY_MAX = 40
+# aios.ko refuses syscall payloads over 64 KiB; leave room for the envelope.
+REQUEST_MAX = 60 * 1024
+TRIMMED = "[older tool result trimmed to fit the kernel's 64 KiB request limit]"
+KEEP_RECENT = 2  # Tool results never trimmed: the newest ones.
 
 _PROTOCOL = """\
 You can use tools. Reply with exactly one JSON object and nothing else:
@@ -115,6 +120,42 @@ def _parse_arguments(raw: Any) -> Any:
         return None
 
 
+def _request_size(messages: list[dict], specs: list[dict] | None) -> int:
+    """Bytes of the LLM syscall payload, encoded as _kernel.llm_stream does."""
+    return len(json.dumps({"messages": messages, "tools": specs or None,
+                           "format": None, "model": None}).encode()) + 200
+
+
+def _fit_request(system: list[dict], history: list[dict], turn: list[dict],
+                 specs: list[dict] | None, limit: int = REQUEST_MAX) -> list[dict]:
+    """The messages for one model call, shrunk to fit the kernel's payload limit.
+
+    Long runs collect tool results until the request no longer fits in one
+    syscall. Oldest first, tool results (except the newest KEEP_RECENT) are
+    cut to a stub in ``turn`` itself, so they stay cut on later steps; then
+    the oldest session history is left out. The newest results and the
+    user's request are kept whole.
+    """
+    def size() -> int:
+        return _request_size(system + history + turn, specs)
+
+    if size() <= limit:
+        return system + history + turn
+    results = [i for i, m in enumerate(turn)
+               if m.get("role") == "tool" or (m.get("role") == "user" and i > 0
+                                              and str(m.get("content", "")).startswith("Tool "))]
+    for index in results[:-KEEP_RECENT] if len(results) > KEEP_RECENT else ():
+        content = str(turn[index].get("content", ""))
+        if len(content) > len(TRIMMED) + 200:
+            turn[index] = {**turn[index], "content": content[:200] + " ... " + TRIMMED}
+            if size() <= limit:
+                return system + history + turn
+    history = list(history)
+    while history and size() > limit:
+        history = history[2:]  # One user/assistant pair at a time.
+    return system + history + turn
+
+
 def ask_terminal(tool_name: str, args: dict) -> bool:
     """Approver that asks on the terminal: ``Agent(..., approve=ask_terminal)``."""
     answer = input(f"Allow tool {tool_name} {json.dumps(args, ensure_ascii=False)}? [y/N] ")
@@ -140,7 +181,9 @@ class Agent:
     """An AI agent registered with the AIOS kernel.
 
     Args:
-        name: Agent name shown in AIOS Manager and Trace.
+        name: Agent name shown in AIOS Manager and Trace. Settings left
+            unset here come from VECTROS_* environment variables, then from
+            ``[agents.<name>]`` in vectros.toml (see ``vectros.config``).
         model: Model to request; it must be on the kernel's model allowlist.
             ``"<provider>/<model>"`` (openai, anthropic, gemini, nvidia) uses a
             hosted provider the LLM worker has a key for, e.g.
@@ -149,37 +192,45 @@ class Agent:
             ``MCPServer``s, whose tools run as ``<server>__<tool>``.
         system: System prompt.
         session: Keep the conversation under this name across runs and restarts.
-        max_steps: Maximum model calls per run.
+        max_steps: Maximum model calls per run (default 10).
         approve: Called as ``approve(tool_name, args) -> bool`` for tools that
             need approval. Without it, the call waits for the owner to decide
             in AIOS Manager.
-        timeout: Seconds allowed for each model or tool call.
+        timeout: Seconds allowed for each model or tool call (default 120).
         tool_protocol: "native" uses the model's function calling; "json"
             asks for JSON replies instead, for models without tool support.
+            Default: "native".
         trace: True turns kernel tracing on for this agent when it registers,
             so its runs appear in AIOS Trace (needs kernel ABI 4.5). Default:
             on when ``VECTROS_TRACE=1``, else the administrator decides.
     """
 
+    DEFAULTS: dict[str, Any] = {"model": None, "system": None, "session": None,
+                                "max_steps": 10, "timeout": 120,
+                                "tool_protocol": "native", "trace": False}
+
     def __init__(self, name: str, *, model: str | None = None,
                  tools: Iterable[Tool | str] = (), system: str | None = None,
-                 session: str | None = None, max_steps: int = 10,
-                 approve: Approver | None = None, timeout: float = 120,
-                 tool_protocol: str = "native", trace: bool | None = None,
+                 session: str | None = None, max_steps: int | None = None,
+                 approve: Approver | None = None, timeout: float | None = None,
+                 tool_protocol: str | None = None, trace: bool | None = None,
                  kernel: Any = None):
-        if tool_protocol not in ("native", "json"):
-            raise ValueError('tool_protocol must be "native" or "json"')
-        self.tool_protocol = tool_protocol
-        if trace is None:
-            trace = os.environ.get("VECTROS_TRACE", "").lower() in ("1", "true", "yes", "on")
-        self.trace = trace
         self.name = _safe_name(name)
-        self.model = model
-        self.system = system
-        self.session = _safe_name(session) if session else None
-        self.max_steps = max_steps
+        given = {"model": model, "system": system, "session": session,
+                 "max_steps": max_steps, "timeout": timeout,
+                 "tool_protocol": tool_protocol, "trace": trace}
+        settings = {**self.DEFAULTS, **agent_settings(self.name),
+                    **{key: value for key, value in given.items() if value is not None}}
+        if settings["tool_protocol"] not in ("native", "json"):
+            raise ValueError('tool_protocol must be "native" or "json"')
+        self.tool_protocol = settings["tool_protocol"]
+        self.trace = settings["trace"]
+        self.model = settings["model"]
+        self.system = settings["system"]
+        self.session = _safe_name(settings["session"]) if settings["session"] else None
+        self.max_steps = settings["max_steps"]
         self.approve = approve
-        self.timeout_ms = int(timeout * 1000)
+        self.timeout_ms = int(settings["timeout"] * 1000)
         self.storage = Storage(self)
         self._tool_specs = list(tools)
         self._tools: dict[str, Tool | KernelTool] | None = None
@@ -260,7 +311,12 @@ class Agent:
                 for item in spec.tools():
                     resolved[item.name] = item
             elif isinstance(spec, str):
+                # "name?" is optional: offered when the tool worker registered it.
+                optional = spec.endswith("?")
+                spec = spec.rstrip("?")
                 if spec not in registry:
+                    if optional:
+                        continue
                     known = ", ".join(sorted(registry)) or "none"
                     raise VectrosError(f"kernel tool {spec!r} is not registered (available: {known})")
                 entry = registry[spec]
@@ -359,8 +415,8 @@ class Agent:
         nudged = False
         try:
             for step in range(self.max_steps):
-                messages = ([{"role": "system", "content": system}] if system else []) \
-                    + self.history + turn
+                messages = _fit_request([{"role": "system", "content": system}] if system else [],
+                                        self.history, turn, specs)
                 span = root.child("aios.planning", "AGENT") if root else None
                 reply = kernel.llm_stream(agent_id, messages, self.model, json_mode=json_protocol,
                                           timeout_ms=self.timeout_ms, span=span, tools=specs)

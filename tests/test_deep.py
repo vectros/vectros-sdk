@@ -71,6 +71,22 @@ def test_task_runs_a_subagent_with_clean_context_and_shared_files(fake):
     assert len(kernel.unregistered) == 2
 
 
+def test_subagent_steps_reach_the_callback(fake):
+    kernel = fake(replies=[
+        call("task", description="look it up", subagent="finder"),
+        call("search", q="aios"),
+        "found it",
+        "done"])
+    seen = []
+    finder = SubAgent("finder", "Finds things.", tools=[search])
+    agent = DeepAgent("deep", subagents=[finder], kernel=kernel,
+                      on_subagent_event=lambda name, event: seen.append((name, event.kind)))
+    assert agent.run("go") == "done"
+    assert ("finder", "tool_call") in seen and ("finder", "tool_result") in seen
+    assert seen[-1] == ("finder", "answer")
+    agent.close()
+
+
 def test_unknown_subagent_goes_back_to_model(fake):
     kernel = fake(replies=[call("task", description="x", subagent="nobody"), "ok"])
     agent = DeepAgent("deep", kernel=kernel)

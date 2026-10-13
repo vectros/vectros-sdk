@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
-from .agent import Agent, _safe_name
+from .agent import Agent, Event, _safe_name
+from .config import agent_settings
 from .errors import VectrosError
 from .tools import Tool, tool
 
@@ -90,11 +91,16 @@ class DeepAgent(Agent):
         max_steps: Maximum model calls per run (default 50).
     """
 
+    DEFAULTS = {**Agent.DEFAULTS, "max_steps": 50}
     BUILTIN = ("write_todos", "ls", "read_file", "write_file", "edit_file", "task")
 
     def __init__(self, name: str, *, tools: Iterable[Any] = (), system: str | None = None,
-                 subagents: Iterable[SubAgent] = (), max_steps: int = 50, **kwargs):
+                 subagents: Iterable[SubAgent] = (),
+                 on_subagent_event: Callable[[str, Event], None] | None = None, **kwargs):
         self.todos: list[dict] = []
+        # Called as on_subagent_event(subagent, event) for each step a
+        # subagent takes, so a caller can show work the task tool hides.
+        self.on_subagent_event = on_subagent_event
         self.files: dict[str, str] = {}
         self._user_tools = list(tools)
         self._subagent_specs: dict[str, SubAgent] = {}
@@ -104,12 +110,14 @@ class DeepAgent(Agent):
                 raise ValueError(f"duplicate subagent name {spec.name!r}")
             self._subagent_specs[spec.name] = spec
         self._subagents: dict[str, Agent] = {}
+        if system is None:  # The prompt is built here, so read the configured one first.
+            system = agent_settings(_safe_name(name)).get("system")
         self._user_system = system or ""
         prompt = BASE_PROMPT + self._subagent_list()
         if system:
             prompt = f"{system}\n\n{prompt}"
         super().__init__(name, tools=[*self._user_tools, *self._builtin_tools()],
-                         system=prompt, max_steps=max_steps, **kwargs)
+                         system=prompt, **kwargs)
         self._load_state()
 
     # --- built-in tools ---
@@ -255,7 +263,14 @@ class DeepAgent(Agent):
     def _delegate(self, name: str, description: str) -> str:
         agent = self._subagent(name)
         agent.history = []  # Every task starts from a clean context.
-        return agent.run(description)
+        if self.on_subagent_event is None:
+            return agent.run(description)
+        answer = ""
+        for event in agent.stream(description):
+            if event.kind == "answer":
+                answer = event.data
+            self.on_subagent_event(name, event)
+        return answer
 
     def close(self) -> None:
         for agent in self._subagents.values():

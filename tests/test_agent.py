@@ -92,6 +92,14 @@ def test_missing_kernel_tool_lists_available(fake):
         Agent("r", tools=["search_web"], kernel=kernel).run("x")
 
 
+def test_optional_kernel_tools_are_skipped_when_missing(fake):
+    kernel = fake(replies=["ok"])
+    agent = Agent("opt", tools=["nope__x?", "search_web?"], kernel=kernel)
+    tools = agent._resolve_tools()
+    assert "nope__x" not in tools
+    assert ("search_web" in tools) == any(t["name"] == "search_web" for t in kernel.list_tools())
+
+
 def test_plain_function_is_rejected(fake):
     def bare(x: int):
         return x
@@ -167,6 +175,27 @@ def test_native_tool_calls_run_through_kernel_and_feed_back(fake):
                              {"role": "tool", "tool_call_id": "c1", "content": "2"}]
     assert kernel.client_calls == [("add", {"a": 2, "b": 3}, False), ("add", {"a": 1, "b": 1}, False)]
     assert "".join(e.data for e in events if e.kind == "token").startswith("Let me add.")
+
+
+@tool
+def big(n: int) -> str:
+    """A large result."""
+    return str(n + 10) * 3000  # 6000 characters each
+
+
+def test_long_runs_trim_old_tool_results_to_fit_the_kernel_limit(fake):
+    from vectros.agent import REQUEST_MAX, TRIMMED, _request_size
+    replies = [envelope("", [("big", {"n": i})]) for i in range(12)] + [envelope("done")]
+    kernel = fake(replies=replies)
+    agent = Agent("long", tools=[big], kernel=kernel, max_steps=20)
+    assert agent.run("go") == "done"
+    last = kernel.llm_calls[-1]
+    assert _request_size(last["messages"], last["tools"]) <= REQUEST_MAX
+    results = [m["content"] for m in last["messages"] if m["role"] == "tool"]
+    assert len(results) == 12
+    assert TRIMMED in results[0]
+    assert results[-2:] == ["20" * 3000, "21" * 3000]  # The newest stay whole.
+    assert last["messages"][0] == {"role": "user", "content": "go"}
 
 
 def test_empty_reply_after_tool_results_is_retried_once(fake):

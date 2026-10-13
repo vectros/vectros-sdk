@@ -90,6 +90,38 @@ for event in agent.stream("Plan my day"):
         print(event.data, end="")
 ```
 
+### Settings outside the code
+
+Settings you do not pass to `Agent()` come from the environment, then from
+the agent's table in `vectros.toml`, then from the defaults above. Change the
+model or the limits without editing code:
+
+```toml
+[agents.reviewer]                 # applies to Agent("reviewer")
+model = "anthropic/claude-opus-5-5"
+system = "You are a reviewer."
+session = "reviewer-demo"
+max_steps = 6
+timeout = 90
+tool_protocol = "native"
+trace = true
+```
+
+| Environment variable | Setting (every agent in the process) |
+| --- | --- |
+| `VECTROS_MODEL` | `model` |
+| `VECTROS_MAX_STEPS` | `max_steps` |
+| `VECTROS_TIMEOUT` | `timeout` |
+| `VECTROS_TOOL_PROTOCOL` | `tool_protocol` |
+| `VECTROS_TRACE` | `trace` |
+| `VECTROS_CONFIG` | Path of the `vectros.toml` to use |
+
+Without `VECTROS_CONFIG`, the SDK reads the nearest `vectros.toml` in the
+current directory or a parent. An unknown setting or a wrong type raises
+`ValueError` when the agent is created. `tools` and `approve` are code, so
+they stay in `Agent()`. `DeepAgent` reads the same table; its `max_steps`
+default is 50.
+
 ## Models
 
 Every model call goes through the kernel, so the LLM worker decides where it
@@ -136,6 +168,8 @@ agent = Agent("ops", tools=[search, send_email, "search_web"], approve=ask_termi
   the docstring and its `Args:` section.
 - A string names a tool registered in the kernel, for example an admin tool or
   an MCP tool such as `github__create_issue`. These run in the AIOS tool worker.
+  A name ending in `?` (`"fetch__fetch?"`) is optional: the agent gets it when
+  the tool worker registered it and runs without it otherwise.
 - `@tool` functions run in the agent's own process. Each call is first
   submitted as a kernel client tool call (ABI 4.3). The function runs only
   after the kernel hands the call back, which can be after owner approval.

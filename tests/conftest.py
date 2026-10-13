@@ -94,4 +94,8 @@ def fake():
 @pytest.fixture(autouse=True)
 def state_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    # Keep the developer's agent settings out of the tests.
+    for variable in ("VECTROS_CONFIG", "VECTROS_MODEL", "VECTROS_MAX_STEPS", "VECTROS_TIMEOUT",
+                     "VECTROS_TOOL_PROTOCOL"):
+        monkeypatch.delenv(variable, raising=False)
     return tmp_path / "state"

@@ -12,6 +12,7 @@
 """
 
 from .agent import Agent, Event, Storage, ask_terminal
+from .config import allowed_models, choose_model, is_local
 from .deep import DeepAgent, SubAgent
 from .errors import (KernelError, KernelUnavailable, StepLimitReached, ToolDenied,
                      VectrosError)
@@ -23,5 +24,5 @@ __version__ = "2.1.0"
 __all__ = [
     "Agent", "DeepAgent", "Event", "KernelError", "KernelTool", "KernelUnavailable",
     "MCPError", "MCPServer", "StepLimitReached", "Storage", "SubAgent", "Tool", "ToolDenied",
-    "VectrosError", "ask_terminal", "tool",
+    "VectrosError", "allowed_models", "ask_terminal", "choose_model", "is_local", "tool",
 ]
