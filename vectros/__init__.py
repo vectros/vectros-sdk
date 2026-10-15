@@ -19,7 +19,7 @@ from .errors import (KernelError, KernelUnavailable, StepLimitReached, ToolDenie
 from .mcp import MCPError, MCPServer
 from .tools import KernelTool, Tool, tool
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 __all__ = [
     "Agent", "DeepAgent", "Event", "KernelError", "KernelTool", "KernelUnavailable",
