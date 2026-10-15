@@ -244,6 +244,11 @@ class TraceSpan:
             self.attributes["aios.content.truncated"] = True
             self.attributes["aios.content.original_bytes"] = original
 
+    def start(self) -> None:
+        """Report the span as open, so AIOS Trace shows the run while it is
+        still going. finish() later replaces it with the final record."""
+        self._send(None, "UNSET", dict(self.attributes))
+
     def finish(self, output: Any = None, error: str | None = None,
                extra: dict[str, Any] | None = None) -> None:
         ended_ns = time.time_ns()
@@ -265,6 +270,9 @@ class TraceSpan:
                 type(error).__name__ if isinstance(error, BaseException) else "AIOSWorkerError"
             )
             attributes["exception.message"] = safe_error
+        self._send(ended_ns, "ERROR" if error else "OK", attributes)
+
+    def _send(self, ended_ns: int | None, status: str, attributes: dict[str, Any]) -> None:
         if self.session_id:
             attributes["session.id"] = self.session_id
         attributes["aios.agent.id"] = self.agent_id
@@ -278,7 +286,7 @@ class TraceSpan:
             "parent_span_id": self.parent_span_id.hex() if any(self.parent_span_id) else None,
             "start_time_unix_nano": self.started_ns,
             "end_time_unix_nano": ended_ns,
-            "status": "ERROR" if error else "OK",
+            "status": status,
             "attributes": {"openinference.span.kind": self.kind, **attributes},
             "events": self.events,
         })

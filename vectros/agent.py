@@ -406,6 +406,7 @@ class Agent:
         if kernel.trace_enabled(agent_id):
             root = TraceSpan.root(f"agent.{self.name}", "AGENT", agent_id, self.session)
             root.set_input(prompt, "text/plain")
+            root.start()
         native = bool(tools) and self.tool_protocol == "native"
         json_protocol = bool(tools) and not native
         system = self._system_prompt(tools) if json_protocol else self.system

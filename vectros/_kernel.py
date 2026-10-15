@@ -255,7 +255,8 @@ class Kernel:
                             "aios.completion.error_code": error.value})
             raise failure
         if span is not None:
-            span.finish(output=data.decode("utf-8", "replace"), extra=extra)
+            # Kernel results end in a NUL terminator; the trace shows the text.
+            span.finish(output=data.decode("utf-8", "replace").rstrip("\0"), extra=extra)
         return data
 
     def status(self, syscall_id: int) -> tuple[int, int]:

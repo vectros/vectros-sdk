@@ -50,3 +50,21 @@ def test_flush_gives_up_after_its_timeout(tmp_path, monkeypatch):
     assert time.monotonic() - started < 2
     release.set()
     server.close()
+
+
+def test_start_reports_an_open_span_that_finish_replaces(monkeypatch):
+    sent = []
+    monkeypatch.setattr(_tracing._SENDER, "send", sent.append)
+    root = TraceSpan.root("agent.live", "AGENT", 42, session_id="s1")
+    root.set_input("hello", "text/plain")
+    root.start()
+    root.finish("bye")
+    opened, closed = sent
+    assert (opened["status"], opened["end_time_unix_nano"]) == ("UNSET", None)
+    assert opened["attributes"]["input.value"] == "hello"
+    assert opened["attributes"]["session.id"] == "s1"
+    assert "output.value" not in opened["attributes"]
+    assert opened["span_id"] == closed["span_id"]
+    assert closed["status"] == "OK" and closed["end_time_unix_nano"] >= closed["start_time_unix_nano"]
+    assert closed["attributes"]["output.value"] == "bye"
+    assert "session.id" not in root.attributes  # start() leaves the span's own attributes alone
